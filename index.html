@@ -43,6 +43,10 @@
   .field { display: flex; flex-direction: column; }
   label { font-size: 12.5px; color: #555; margin-bottom: 5px; }
   input, select, textarea { width: 100%; padding: 11px 10px; border: 1px solid #cfd6e0; border-radius: 9px; font-size: 15px; background: #fff; }
+  /* 24 小时制时间选择器（小时+分钟两个下拉，移动端滚轮划动，无上午/下午） */
+  .time-pick { display: flex; align-items: center; gap: 8px; }
+  .time-pick select { flex: 1; min-width: 0; text-align: center; font-variant-numeric: tabular-nums; }
+  .time-pick span { color: #555; font-weight: 600; }
   input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(47,111,237,.12); }
   textarea { resize: vertical; min-height: 42px; }
   input[readonly] { background: #f3f5f9; color: #555; }
@@ -147,13 +151,22 @@
             <option value="holiday">法定节假日</option>
           </select>
         </div>
-        <div class="field"><label>起始时间 *</label><input id="fStart" type="time"></div>
-        <div class="field"><label>终止时间 *</label><input id="fEnd" type="time"></div>
+        <div class="field"><label>起始时间 *（24小时制）</label>
+          <div class="time-pick">
+            <select id="fStartH" aria-label="起始小时"></select><span>:</span><select id="fStartM" aria-label="起始分钟"></select>
+          </div>
+        </div>
+        <div class="field"><label>终止时间 *（24小时制）</label>
+          <div class="time-pick">
+            <select id="fEndH" aria-label="终止小时"></select><span>:</span><select id="fEndM" aria-label="终止分钟"></select>
+          </div>
+        </div>
       </div>
       <div class="form-grid" style="margin-top:12px">
         <div class="field" style="grid-column: 1 / -1"><label>加班事由</label><input id="fReason" placeholder="如：跟进侨联换届相关工作"></div>
       </div>
       <div class="hours-preview" id="hoursPreview">本次时长：<span class="num">0.00</span> 小时（自动按起止时间换算）</div>
+      <div class="tip">时间采用 24 小时制（示例：13:00 = 下午1点、22:30 = 晚上10点半），滚轮划动选择，无需切换上午/下午。</div>
       <div class="tip" id="formTip"></div>
       <div class="btn-row">
         <button class="btn-primary" id="btnAdd">添加记录</button>
