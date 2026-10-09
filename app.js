@@ -145,7 +145,20 @@
     $('monthLabel').textContent = m.replace('-', '年') + '月';
     const list = currentMonthEntries();
     const box = $('entryTable');
-    if (!list.length) { box.innerHTML = '<div class="empty">本月暂无记录，请在上方录入或从模板导入。</div>'; return; }
+    const carousel = $('entryCarousel');
+    const hint = $('entryTotalHint');
+    const bar = $('carouselBar');
+    if (!list.length) {
+      box.innerHTML = '<div class="empty">本月暂无记录，请在上方录入或从模板导入。</div>';
+      carousel.innerHTML = '<div class="empty">本月暂无记录，请在上方录入或从模板导入。</div>';
+      if (hint) hint.textContent = '';
+      if (bar) bar.hidden = true;
+      return;
+    }
+    if (hint) hint.textContent = `共 ${list.length} 条记录`;
+    if (bar) bar.hidden = false;
+
+    // —— 桌面：紧凑表格（信息密度高，几十上百条也能一眼扫完）——
     let html = '<table><thead><tr><th>序号</th><th>姓名</th><th>部门</th><th>日期</th><th>类型</th><th>时长(h)</th><th>起</th><th>止</th><th>事由</th><th>操作</th></tr></thead><tbody>';
     list.forEach((e, i) => {
       html += `<tr>
@@ -165,6 +178,54 @@
     box.innerHTML = html;
     box.querySelectorAll('[data-del]').forEach(a => a.onclick = () => delEntry(a.getAttribute('data-del')));
     box.querySelectorAll('[data-edit]').forEach(a => a.onclick = () => startEdit(a.getAttribute('data-edit')));
+
+    // —— 移动端：横向滑动卡片（scroll-snap，记录再多也不撑长页面）——
+    let chtml = '';
+    list.forEach((e, i) => {
+      chtml += `<div class="rcard">
+        <div class="rcard-top"><span class="tag ${e.type}">${TYPE_LABEL[e.type]}</span><span class="rnum">${i + 1} / ${list.length}</span></div>
+        <div class="rcard-name">${esc(e.name)}<span class="rcard-dept">${esc(e.dept || '')}</span></div>
+        <div class="rcard-date">${e.date}</div>
+        <div class="rcard-grid">
+          <div><span>时长</span><b class="h">${fmt(e.hours)}</b></div>
+          <div><span>起</span><b>${esc(e.start || '')}</b></div>
+          <div><span>止</span><b>${esc(e.end || '')}</b></div>
+        </div>
+        <div class="rcard-reason">${esc(e.reason || '') || '—'}</div>
+        <div class="rcard-ops"><a class="dl" data-edit="${e.id}">编辑</a><a class="dl" data-del="${e.id}" style="color:#d23b3b">删除</a></div>
+      </div>`;
+    });
+    carousel.innerHTML = chtml;
+    carousel.querySelectorAll('[data-del]').forEach(a => a.onclick = () => delEntry(a.getAttribute('data-del')));
+    carousel.querySelectorAll('[data-edit]').forEach(a => a.onclick = () => startEdit(a.getAttribute('data-edit')));
+    updateCarousel();
+  }
+  // 横向卡片：随滑动更新“第 X / N 条”，并反馈箭头可用状态
+  function updateCarousel() {
+    const carousel = $('entryCarousel');
+    const idxEl = $('carIdx');
+    const prev = $('carPrev');
+    const next = $('carNext');
+    if (!carousel || !idxEl) return;
+    const cards = carousel.querySelectorAll('.rcard');
+    const n = cards.length;
+    if (!n) return;
+    const step = cards[0].offsetWidth + 12; // 卡片宽 + gap
+    let cur = Math.round(carousel.scrollLeft / step) + 1;
+    if (cur < 1) cur = 1; if (cur > n) cur = n;
+    idxEl.textContent = `第 ${cur} / ${n} 条`;
+    if (prev) prev.disabled = cur <= 1;
+    if (next) next.disabled = cur >= n;
+  }
+  function scrollCarousel(dir) {
+    const carousel = $('entryCarousel');
+    if (!carousel) return;
+    const cards = carousel.querySelectorAll('.rcard');
+    if (!cards.length) return;
+    const step = cards[0].offsetWidth + 12;
+    let cur = Math.round(carousel.scrollLeft / step);
+    cur = Math.max(0, Math.min(cards.length - 1, cur + dir));
+    carousel.scrollTo({ left: cur * step, behavior: 'smooth' });
   }
   function renderSummary() {
     const list = currentMonthEntries();
@@ -379,6 +440,12 @@
   // ---------- 移动端底部操作栏（仅窄屏显示）----------
   if ($('mbAdd')) $('mbAdd').onclick = () => { window.scrollTo({ top: 0, behavior: 'smooth' }); setTimeout(() => { try { $('fDate').focus(); } catch (e) {} }, 250); };
   if ($('mbExport')) $('mbExport').onclick = exportXlsx;
+
+  // ---------- 移动端横向卡片轮播：滑动更新计数 + 箭头跳转 ----------
+  const carEl = $('entryCarousel');
+  if (carEl) carEl.addEventListener('scroll', () => { clearTimeout(carEl._t); carEl._t = setTimeout(updateCarousel, 60); }, { passive: true });
+  if ($('carPrev')) $('carPrev').onclick = () => scrollCarousel(-1);
+  if ($('carNext')) $('carNext').onclick = () => scrollCarousel(1);
 
   // ---------- 初始化 24 小时制时间选择器 ----------
   // 原生 time 输入无需初始化
