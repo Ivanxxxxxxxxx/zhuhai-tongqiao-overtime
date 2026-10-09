@@ -74,8 +74,27 @@
     if (mins < 0) mins += 24 * 60;
     return Math.round((mins / 60) * 100) / 100;
   }
+  // ===== 24 小时制时间选择器（小时 0-23 + 分钟 0-59 两个下拉，移动端滚轮）=====
+  function buildTimeSelect(selH, selM) {
+    let hOpt = '<option value="">时</option>';
+    for (let h = 0; h < 24; h++) hOpt += `<option value="${h}">${pad(h)}</option>`;
+    let mOpt = '<option value="">分</option>';
+    for (let m = 0; m < 60; m++) mOpt += `<option value="${m}">${pad(m)}</option>`;
+    selH.innerHTML = hOpt; selM.innerHTML = mOpt;
+  }
+  function getTimeSel(prefix) {
+    const h = $(prefix + 'H').value, m = $(prefix + 'M').value;
+    if (h === '' || m === '') return '';
+    return pad(Number(h)) + ':' + pad(Number(m));
+  }
+  function setTimeSel(prefix, val) {
+    if (!val) { $(prefix + 'H').value = ''; $(prefix + 'M').value = ''; return; }
+    const parts = String(val).split(':');
+    $(prefix + 'H').value = String(Number(parts[0]));
+    $(prefix + 'M').value = String(Number(parts[1] || 0));
+  }
   function updateHoursPreview() {
-    const h = calcHours($('fStart').value, $('fEnd').value);
+    const h = calcHours(getTimeSel('fStart'), getTimeSel('fEnd'));
     $('hoursPreview').innerHTML = `本次时长：<span class="num">${fmt(h)}</span> 小时（自动按起止时间换算）`;
     return h;
   }
@@ -185,8 +204,8 @@
     if (!currentUser) return;
     const date = $('fDate').value;
     const type = $('fType').value;
-    const start = $('fStart').value;
-    const end = $('fEnd').value;
+    const start = getTimeSel('fStart');
+    const end = getTimeSel('fEnd');
     const hours = calcHours(start, end);
     const tip = $('formTip');
     if (!date) { tip.textContent = '请选择加班日期'; tip.style.color = '#d23b3b'; return; }
@@ -214,14 +233,14 @@
     clearForm(); renderAll();
   }
   function clearForm() {
-    $('fDate').value = ''; $('fStart').value = ''; $('fEnd').value = ''; $('fReason').value = '';
+    $('fDate').value = ''; setTimeSel('fStart', ''); setTimeSel('fEnd', ''); $('fReason').value = '';
     $('fType').value = 'weekday'; updateHoursPreview();
   }
   function startEdit(id) {
     const e = entries.find(x => x.id === id); if (!e) return;
     editingId = id;
     $('fDate').value = e.date; $('fType').value = e.type;
-    $('fStart').value = e.start || ''; $('fEnd').value = e.end || '';
+    setTimeSel('fStart', e.start || ''); setTimeSel('fEnd', e.end || '');
     $('fReason').value = e.reason || '';
     updateHoursPreview();
     $('btnAdd').textContent = '保存修改';
@@ -330,8 +349,10 @@
   $('btnLogout').onclick = logout;
   $('btnAdd').onclick = addOrUpdate;
   $('btnClearForm').onclick = () => { editingId = null; $('btnAdd').textContent = '添加记录'; clearForm(); $('formTip').textContent = ''; };
-  $('fStart').addEventListener('input', updateHoursPreview);
-  $('fEnd').addEventListener('input', updateHoursPreview);
+  $('fStartH').addEventListener('change', updateHoursPreview);
+  $('fStartM').addEventListener('change', updateHoursPreview);
+  $('fEndH').addEventListener('change', updateHoursPreview);
+  $('fEndM').addEventListener('change', updateHoursPreview);
   $('setMonth').onchange = () => { collectSettings(); renderAll(); };
   $('setUnit').onchange = collectSettings;
   $('btnExport').onclick = exportXlsx;
@@ -347,6 +368,10 @@
     if (!confirm('确定清空本人全部数据？此操作不可恢复。')) return;
     entries = []; saveEntries(); renderAll(); toast('已清空本人全部数据');
   };
+
+  // ---------- 初始化 24 小时制时间选择器 ----------
+  buildTimeSelect($('fStartH'), $('fStartM'));
+  buildTimeSelect($('fEndH'), $('fEndM'));
 
   // ---------- 启动 ----------
   try {
