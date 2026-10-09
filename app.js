@@ -149,16 +149,16 @@
     let html = '<table><thead><tr><th>序号</th><th>姓名</th><th>部门</th><th>日期</th><th>类型</th><th>时长(h)</th><th>起</th><th>止</th><th>事由</th><th>操作</th></tr></thead><tbody>';
     list.forEach((e, i) => {
       html += `<tr>
-        <td>${i + 1}</td>
-        <td class="name">${esc(e.name)}</td>
-        <td>${esc(e.dept || '')}</td>
-        <td>${e.date}</td>
-        <td><span class="tag ${e.type}">${TYPE_LABEL[e.type]}</span></td>
-        <td>${fmt(e.hours)}</td>
-        <td>${esc(e.start || '')}</td>
-        <td>${esc(e.end || '')}</td>
-        <td class="reason">${esc(e.reason || '')}</td>
-        <td><a class="dl" data-edit="${e.id}">编辑</a> &nbsp; <a class="dl" data-del="${e.id}" style="color:#d23b3b">删除</a></td>
+        <td data-label="序号">${i + 1}</td>
+        <td class="name" data-label="姓名">${esc(e.name)}</td>
+        <td data-label="部门">${esc(e.dept || '')}</td>
+        <td data-label="日期">${e.date}</td>
+        <td data-label="类型"><span class="tag ${e.type}">${TYPE_LABEL[e.type]}</span></td>
+        <td data-label="时长(h)">${fmt(e.hours)}</td>
+        <td data-label="起">${esc(e.start || '')}</td>
+        <td data-label="止">${esc(e.end || '')}</td>
+        <td class="reason" data-label="事由">${esc(e.reason || '')}</td>
+        <td data-label="操作"><a class="dl" data-edit="${e.id}">编辑</a> <a class="dl" data-del="${e.id}" style="color:#d23b3b">删除</a></td>
       </tr>`;
     });
     html += '</tbody></table>';
@@ -175,17 +175,18 @@
     for (const e of list) {
       const p = people[e.name] = people[e.name] || { name: e.name, wk: 0, we: 0, ho: 0, sub: 0 };
       if (e.type === 'weekday') p.wk += e.hours; else if (e.type === 'weekend') p.we += e.hours; else p.ho += e.hours;
-      const s = G.entrySubsidy(e.type, e.hours);
-      p.sub += s; wkT += p.wk; weT += p.we; hoT += p.ho; subT += s;
+      p.sub += G.entrySubsidy(e.type, e.hours);
     }
+    // 先按人汇总，再对人数聚合，避免把“个人累计运行时长”重复叠加（原写法会按记录条数成倍放大合计）
     const names = Object.keys(people);
+    for (const nm of names) { const p = people[nm]; wkT += p.wk; weT += p.we; hoT += p.ho; subT += p.sub; }
     let html = '<table><thead><tr><th>序号</th><th>姓名</th><th>工作日加班(h)</th><th>双休日加班(h)</th><th>法定节假日加班(h)</th><th>累计时长(h)</th><th>加班补贴(元)</th></tr></thead><tbody>';
     names.forEach((nm, i) => {
       const p = people[nm];
       const total = (p.wk + p.we + p.ho);
-      html += `<tr><td>${i + 1}</td><td class="name">${esc(p.name)}</td><td>${fmt(p.wk)}</td><td>${fmt(p.we)}</td><td>${fmt(p.ho)}</td><td>${fmt(total)}</td><td>${fmt(p.sub)}</td></tr>`;
+      html += `<tr><td data-label="序号">${i + 1}</td><td class="name" data-label="姓名">${esc(p.name)}</td><td data-label="工作日加班(h)">${fmt(p.wk)}</td><td data-label="双休日加班(h)">${fmt(p.we)}</td><td data-label="法定节假日加班(h)">${fmt(p.ho)}</td><td data-label="累计时长(h)">${fmt(total)}</td><td data-label="加班补贴(元)">${fmt(p.sub)}</td></tr>`;
     });
-    html += `<tr class="summary-total"><td colspan="2">合计</td><td>${fmt(wkT)}</td><td>${fmt(weT)}</td><td>${fmt(hoT)}</td><td>${fmt(wkT + weT + hoT)}</td><td>${fmt(subT)}</td></tr>`;
+    html += `<tr class="summary-total"><td data-label="合计" colspan="2">合计</td><td data-label="工作日加班(h)">${fmt(wkT)}</td><td data-label="双休日加班(h)">${fmt(weT)}</td><td data-label="法定节假日加班(h)">${fmt(hoT)}</td><td data-label="累计时长(h)">${fmt(wkT + weT + hoT)}</td><td data-label="加班补贴(元)">${fmt(subT)}</td></tr>`;
     html += '</tbody></table>';
     box.innerHTML = html;
   }
@@ -292,10 +293,13 @@
     for (let i = headRow + 1; i < rows.length; i++) {
       const r = rows[i] || [];
       if (!r.length) continue;
-      const name = String(r[2] != null ? r[2] : '').trim();
-      if (!name) continue; // 跳过子表头/空行
+      // 小计/合计行：母版里“小计”可能在部门列，统一对 序号/部门/姓名 三列判断后停止
+      const c02 = [r[0], r[1], r[2]].map(c => String(c == null ? '' : c).trim());
+      if (c02.some(v => v === '小计' || v === '合计')) break;
       const first = String(r[0] != null ? r[0] : '');
-      if (name === '小计' || name === '合计' || first.indexOf('制表') >= 0) break; // 到小计/制表人结束
+      if (first.indexOf('制表') >= 0) break; // 制表人行：结束
+      const name = c02[2];
+      if (!name) continue; // 跳过子表头/空行
       const dept = String(r[1] != null ? r[1] : '').trim();
       const date = excelSerialToDate(r[3]);
       if (!date) continue;
@@ -371,6 +375,10 @@
     if (!confirm('确定清空本人全部数据？此操作不可恢复。')) return;
     entries = []; saveEntries(); renderAll(); toast('已清空本人全部数据');
   };
+
+  // ---------- 移动端底部操作栏（仅窄屏显示）----------
+  if ($('mbAdd')) $('mbAdd').onclick = () => { window.scrollTo({ top: 0, behavior: 'smooth' }); setTimeout(() => { try { $('fDate').focus(); } catch (e) {} }, 250); };
+  if ($('mbExport')) $('mbExport').onclick = exportXlsx;
 
   // ---------- 初始化 24 小时制时间选择器 ----------
   // 原生 time 输入无需初始化
