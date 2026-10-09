@@ -75,6 +75,12 @@
   .muted { color: #999; font-size: 12px; }
   .empty { color: #999; text-align: center; padding: 18px; }
   .tip { font-size: 12px; color: #888; margin-top: 8px; line-height: 1.6; }
+  /* 当月记录：桌面用表格，移动端用横向滑动卡片（默认隐藏，移动端媒体查询内显示） */
+  #entryCarousel { display: none; }
+  .total-hint { font-size: 12.5px; color: #999; margin: 2px 0 10px; }
+  .carousel-bar { display: none; }
+  .carousel-bar .cbtn { width: 38px; height: 38px; border-radius: 50%; padding: 0; font-size: 20px; line-height: 1; background: #eef2f8; color: var(--blue); }
+  .carousel-bar .cidx { font-size: 13px; color: #555; min-width: 88px; text-align: center; }
   .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); background: #2b2b2b; color: #fff;
     padding: 11px 18px; border-radius: 9px; font-size: 13px; opacity: 0; transition: .25s; pointer-events: none; z-index: 99; max-width: 90vw; }
   .toast.show { opacity: .95; }
@@ -101,26 +107,42 @@
     .topbar .who { font-size: 13px; }
     .topbar .btn-sm { padding: 8px 12px; }
 
-    /* 表格 → 卡片式（每行为一张卡，字段名用 data-label 显示） */
-    .table-wrap { overflow: visible; }
-    table { min-width: 0; border: none; }
-    table, thead, tbody, tr, th, td { display: block; width: 100%; }
-    thead { display: none; }
-    tbody tr { background: #fff; border: 1px solid var(--line); border-radius: 11px;
-      margin-bottom: 11px; padding: 3px 2px; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
-    tbody td { border: none; border-bottom: 1px solid #f1f3f7; border-radius: 0;
-      display: flex; justify-content: space-between; align-items: center; gap: 14px;
-      text-align: right; padding: 9px 12px; white-space: normal; }
-    tbody td:last-child { border-bottom: none; }
-    tbody td::before { content: attr(data-label); flex-shrink: 0; text-align: left;
-      font-size: 12px; color: #8a93a3; font-weight: 600; }
-    tbody td.name, tbody td.reason { word-break: break-word; }
-    tbody td.reason { color: #444; }
-    tbody td a.dl { display: inline-block; padding: 6px 14px; margin-left: 6px;
-      border: 1px solid var(--line); border-radius: 8px; background: #f5f8fc; font-size: 13px; }
-    /* 合计行高亮 */
-    tr.summary-total td { background: #fff8e6; border-radius: 11px; }
-    tr.summary-total td::before { color: var(--warn); }
+    /* 当月记录：移动端隐藏桌面表格，改横向滑动卡片（snap 手感，记录再多也不撑长页面） */
+    #entryTable { display: none; }
+    #entryCarousel { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch; padding: 2px 1px 10px; }
+    #entryCarousel::-webkit-scrollbar { height: 6px; }
+    #entryCarousel::-webkit-scrollbar-thumb { background: #d3dae6; border-radius: 3px; }
+    .rcard { flex: 0 0 84%; scroll-snap-align: center; background: #fff;
+      border: 1px solid var(--line); border-radius: 12px; padding: 13px 14px 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+    .rcard-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .rcard-top .rnum { font-size: 12px; color: #8a93a3; font-weight: 600; }
+    .rcard-name { font-size: 15px; font-weight: 700; }
+    .rcard-dept { font-size: 12px; color: #999; font-weight: 400; margin-left: 6px; }
+    .rcard-date { font-size: 13px; color: #555; margin: 2px 0 10px; }
+    .rcard-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+    .rcard-grid > div { background: #f6f8fc; border-radius: 8px; padding: 7px 6px; text-align: center; }
+    .rcard-grid span { display: block; font-size: 11px; color: #8a93a3; margin-bottom: 2px; }
+    .rcard-grid b { font-size: 15px; }
+    .rcard-grid b.h { color: var(--blue); }
+    .rcard-reason { font-size: 13px; color: #444; background: #f8fafc; border-radius: 8px;
+      padding: 8px 10px; margin-bottom: 10px; word-break: break-word; }
+    .rcard-ops { display: flex; gap: 10px; }
+    .rcard-ops a { flex: 1; text-align: center; padding: 9px; border: 1px solid var(--line);
+      border-radius: 8px; background: #f5f8fc; font-size: 13px; }
+    .carousel-bar { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 2px 0 10px; }
+
+    /* 月度汇总：移动端仍用纵向卡片（按人数，条数少不撑长） */
+    #summaryTable table { min-width: 0; border: none; }
+    #summaryTable table, #summaryTable thead, #summaryTable tbody, #summaryTable tr, #summaryTable th, #summaryTable td { display: block; width: 100%; }
+    #summaryTable thead { display: none; }
+    #summaryTable tbody tr { background: #fff; border: 1px solid var(--line); border-radius: 11px; margin-bottom: 10px; padding: 3px 2px; }
+    #summaryTable tbody td { border: none; border-bottom: 1px solid #f1f3f7; display: flex; justify-content: space-between; align-items: center; gap: 14px; text-align: right; padding: 9px 12px; }
+    #summaryTable tbody td:last-child { border-bottom: none; }
+    #summaryTable tbody td::before { content: attr(data-label); flex-shrink: 0; text-align: left; font-size: 12px; color: #8a93a3; font-weight: 600; }
+    #summaryTable tr.summary-total td { background: #fff8e6; border-radius: 11px; }
+    #summaryTable tr.summary-total td::before { color: var(--warn); }
 
     /* 底部固定操作栏：单手可达 */
     .mb-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 90; display: flex; gap: 10px;
@@ -201,7 +223,14 @@
     <!-- 当月记录 -->
     <div class="card">
       <h2>本月加班记录（<span id="monthLabel"></span>）</h2>
+      <div class="total-hint" id="entryTotalHint"></div>
+      <div class="carousel-bar" id="carouselBar" hidden>
+        <button class="cbtn" id="carPrev" aria-label="上一条">‹</button>
+        <span class="cidx" id="carIdx">第 1 / 1 条</span>
+        <button class="cbtn" id="carNext" aria-label="下一条">›</button>
+      </div>
       <div class="table-wrap"><div id="entryTable"></div></div>
+      <div class="carousel" id="entryCarousel"></div>
       <div class="btn-row">
         <button class="btn-danger btn-sm" id="btnClearMonth">清空本月记录</button>
       </div>
