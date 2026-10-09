@@ -75,27 +75,16 @@
     if (mins < 60) return 0;             // 不满1小时不计
     return Math.ceil(mins / 60);         // 向上取整到整小时（1.1h→2h、2.5h→3h）
   }
-  // ===== 24 小时制时间选择器（小时 0-23 + 分钟 0-59 两个下拉，移动端滚轮）=====
-  function buildTimeSelect(selH, selM) {
-    let hOpt = '<option value="">时</option>';
-    for (let h = 0; h < 24; h++) hOpt += `<option value="${h}">${pad(h)}</option>`;
-    let mOpt = '<option value="">分</option>';
-    for (let m = 0; m < 60; m++) mOpt += `<option value="${m}">${pad(m)}</option>`;
-    selH.innerHTML = hOpt; selM.innerHTML = mOpt;
+  // ===== 原生时间选择器（type=time，移动端滚轮式，记录/导出均为 24 小时制）=====
+  function getTimeVal(prefix) {
+    const v = $(prefix).value;
+    return v || '';
   }
-  function getTimeSel(prefix) {
-    const h = $(prefix + 'H').value, m = $(prefix + 'M').value;
-    if (h === '' || m === '') return '';
-    return pad(Number(h)) + ':' + pad(Number(m));
-  }
-  function setTimeSel(prefix, val) {
-    if (!val) { $(prefix + 'H').value = ''; $(prefix + 'M').value = ''; return; }
-    const parts = String(val).split(':');
-    $(prefix + 'H').value = String(Number(parts[0]));
-    $(prefix + 'M').value = String(Number(parts[1] || 0));
+  function setTimeVal(prefix, val) {
+    $(prefix).value = val || '';
   }
   function updateHoursPreview() {
-    const h = calcHours(getTimeSel('fStart'), getTimeSel('fEnd'));
+    const h = calcHours(getTimeVal('fStart'), getTimeVal('fEnd'));
     let suffix = '小时（自动按起止时间换算，不满1小时不计、满1小时后按整小时向上取整）';
     if (h === 0) suffix = '小时（不满1小时的不计加班，无需录入）';
     $('hoursPreview').innerHTML = `本次时长：<span class="num">${h}</span> ${suffix}`;
@@ -207,8 +196,8 @@
     if (!currentUser) return;
     const date = $('fDate').value;
     const type = $('fType').value;
-    const start = getTimeSel('fStart');
-    const end = getTimeSel('fEnd');
+    const start = getTimeVal('fStart');
+    const end = getTimeVal('fEnd');
     const hours = calcHours(start, end);
     const tip = $('formTip');
     if (!date) { tip.textContent = '请选择加班日期'; tip.style.color = '#d23b3b'; return; }
@@ -236,14 +225,14 @@
     clearForm(); renderAll();
   }
   function clearForm() {
-    $('fDate').value = ''; setTimeSel('fStart', ''); setTimeSel('fEnd', ''); $('fReason').value = '';
+    $('fDate').value = ''; setTimeVal('fStart', ''); setTimeVal('fEnd', ''); $('fReason').value = '';
     $('fType').value = 'weekday'; updateHoursPreview();
   }
   function startEdit(id) {
     const e = entries.find(x => x.id === id); if (!e) return;
     editingId = id;
     $('fDate').value = e.date; $('fType').value = e.type;
-    setTimeSel('fStart', e.start || ''); setTimeSel('fEnd', e.end || '');
+    setTimeVal('fStart', e.start || ''); setTimeVal('fEnd', e.end || '');
     $('fReason').value = e.reason || '';
     updateHoursPreview();
     $('btnAdd').textContent = '保存修改';
@@ -269,7 +258,7 @@
     const today = todayCN();
     return { year: y, month: m, unit: s.unit, pubStart: today, pubEnd: today, makeDate: today, timeStr: today };
   }
-  function exportXlsx() {
+  async function exportXlsx() {
     collectSettings();
     const ctx = buildCtx();
     const list = currentMonthEntries();
@@ -277,7 +266,7 @@
     if (!window.TQ_TEMPLATE_B64) { alert('模板未加载，请刷新页面后重试'); return; }
     try {
       const tplBuf = b64ToBuf(window.TQ_TEMPLATE_B64);
-      const res = G.fillTemplate(ctx, list, tplBuf);
+      const res = await G.fillTemplate(ctx, list, tplBuf);
       G.downloadXlsx(res.buf, `统侨加班_${ctx.year}-${pad(ctx.month)}月_公示表+发放表.xlsx`);
       const ym = ctx.year + '年' + ctx.month + '月';
       toast(`已导出 ${ym} 表格（${list.length} 条记录，补贴合计 ${res.subT} 元）`);
@@ -365,10 +354,8 @@
   $('btnLogout').onclick = logout;
   $('btnAdd').onclick = addOrUpdate;
   $('btnClearForm').onclick = () => { editingId = null; $('btnAdd').textContent = '添加记录'; clearForm(); $('formTip').textContent = ''; };
-  $('fStartH').addEventListener('change', updateHoursPreview);
-  $('fStartM').addEventListener('change', updateHoursPreview);
-  $('fEndH').addEventListener('change', updateHoursPreview);
-  $('fEndM').addEventListener('change', updateHoursPreview);
+  $('fStart').addEventListener('change', updateHoursPreview);
+  $('fEnd').addEventListener('change', updateHoursPreview);
   $('setMonth').onchange = () => { collectSettings(); renderAll(); };
   $('setUnit').onchange = collectSettings;
   $('btnExport').onclick = exportXlsx;
@@ -386,8 +373,7 @@
   };
 
   // ---------- 初始化 24 小时制时间选择器 ----------
-  buildTimeSelect($('fStartH'), $('fStartM'));
-  buildTimeSelect($('fEndH'), $('fEndM'));
+  // 原生 time 输入无需初始化
 
   // ---------- 启动 ----------
   try {
