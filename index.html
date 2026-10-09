@@ -151,16 +151,8 @@
             <option value="holiday">法定节假日</option>
           </select>
         </div>
-        <div class="field"><label>起始时间 *（24小时制）</label>
-          <div class="time-pick">
-            <select id="fStartH" aria-label="起始小时"></select><span>:</span><select id="fStartM" aria-label="起始分钟"></select>
-          </div>
-        </div>
-        <div class="field"><label>终止时间 *（24小时制）</label>
-          <div class="time-pick">
-            <select id="fEndH" aria-label="终止小时"></select><span>:</span><select id="fEndM" aria-label="终止分钟"></select>
-          </div>
-        </div>
+        <div class="field"><label>起始时间 *</label><input id="fStart" type="time" step="60"></div>
+        <div class="field"><label>终止时间 *</label><input id="fEnd" type="time" step="60"></div>
       </div>
       <div class="form-grid" style="margin-top:12px">
         <div class="field" style="grid-column: 1 / -1"><label>加班事由</label><input id="fReason" placeholder="如：跟进侨联换届相关工作"></div>
@@ -216,6 +208,7 @@
 
 <div class="toast" id="toast"></div>
 <script src="vendor/template.js"></script>
+<script src="vendor/exceljs.min.js"></script>
 <script src="xlsx.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="app.js"></script>
