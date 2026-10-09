@@ -165,7 +165,7 @@
       <div class="form-grid" style="margin-top:12px">
         <div class="field" style="grid-column: 1 / -1"><label>加班事由</label><input id="fReason" placeholder="如：跟进侨联换届相关工作"></div>
       </div>
-      <div class="hours-preview" id="hoursPreview">本次时长：<span class="num">0.00</span> 小时（自动按起止时间换算）</div>
+      <div class="hours-preview" id="hoursPreview">本次时长：<span class="num">0</span> 小时（自动按起止时间换算，不满1小时不计、满1小时后按整小时向上取整）</div>
       <div class="tip">时间采用 24 小时制（示例：13:00 = 下午1点、22:30 = 晚上10点半），滚轮划动选择，无需切换上午/下午。</div>
       <div class="tip" id="formTip"></div>
       <div class="btn-row">
@@ -215,6 +215,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<script src="vendor/template.js"></script>
 <script src="xlsx.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="app.js"></script>
