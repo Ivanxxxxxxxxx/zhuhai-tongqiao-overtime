@@ -102,13 +102,15 @@
   function ref(c, r) { return colLetter(c) + (r + 1); }
 
   // ===== 补贴计算规则（与模板真实数字吻合）=====
-  // 工作日：不足1小时不计，满1小时按整段时长×15，封顶80元/天
-  // 双休日：×20，封顶160元/天；法定节假日：×30，封顶240元/天
+  // 不满1小时不算；满1小时后按小时向上取整（1.1h按2h、2.5h按3h…）
+  // 工作日：15元/小时，封顶80元/天；双休日：20元/小时，封顶160元/天；法定节假日：30元/小时，封顶240元/天
   const RATES = { weekday: 15, weekend: 20, holiday: 30 };
   const CAPS = { weekday: 80, weekend: 160, holiday: 240 };
+  function effHours(hours) { return hours < 1 ? 0 : Math.ceil(hours); }
   function entrySubsidy(type, hours) {
-    if (type === 'weekday' && hours < 1) return 0; // 工作日：不足1小时不计
-    return Math.min(hours * RATES[type], CAPS[type]);
+    const h = effHours(hours);
+    if (h <= 0) return 0;
+    return Math.min(h * RATES[type], CAPS[type]);
   }
 
   function buildSheetXML(cols, cells) {
@@ -280,7 +282,7 @@ ${sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
     fCells.push({ c: 3, r: fEnd, t: 'n', v: weT, s: S.data });
     fCells.push({ c: 4, r: fEnd, t: 'n', v: hoT, s: S.data });
     fCells.push({ c: 5, r: fEnd, t: 'n', v: Math.round(subT * 100) / 100, s: S.data });
-    const rules = '备注：工作日加班（不含一小时内）以15元/小时标准计算，当天加班补贴最高为80元；双休日加班以20元/小时标准计算，当天加班补贴最高为160元；法定节假日加班以30元/小时标准计算，当天加班补贴最高为240元。';
+    const rules = '备注：加班补贴按小时向上取整核算（不满1小时不计，满1小时后1.1小时按2小时算，以此类推）；工作日加班以15元/小时标准计算，当天加班补贴最高为80元；双休日加班以20元/小时标准计算，当天加班补贴最高为160元；法定节假日加班以30元/小时标准计算，当天加班补贴最高为240元。';
     fCells.push({ c: 0, r: fEnd + 1, t: 's', v: rules, s: S.note });
     fCells.push({ c: 0, r: fEnd + 2, t: 's', v: '制表人：                                   单位意见：                 ', s: S.note });
     fCells.push({ c: 0, r: fEnd + 3, t: 's', v: '党群工作部意见：                               发改财政局意见：', s: S.note });
