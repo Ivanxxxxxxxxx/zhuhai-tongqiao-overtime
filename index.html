@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>珠海高新区统侨科 · 加班统计与补贴核算</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif; background: #f4f6f9; color: #222; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 22px; margin: 8px 0 4px; }
+  .sub { color: #666; font-size: 13px; margin-bottom: 18px; }
+  .card { background: #fff; border: 1px solid #e6e9ef; border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  .card h2 { font-size: 16px; margin: 0 0 14px; padding-left: 9px; border-left: 4px solid #2f6fed; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  label { display: block; font-size: 12px; color: #555; margin-bottom: 4px; }
+  input, select, textarea { width: 100%; padding: 8px 9px; border: 1px solid #cfd6e0; border-radius: 7px; font-size: 14px; background: #fff; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: #2f6fed; box-shadow: 0 0 0 2px rgba(47,111,237,.12); }
+  textarea { resize: vertical; min-height: 38px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .row > div { flex: 1 1 160px; }
+  button { cursor: pointer; border: none; border-radius: 7px; padding: 9px 16px; font-size: 14px; font-weight: 600; transition: .15s; }
+  .btn-primary { background: #2f6fed; color: #fff; }
+  .btn-primary:hover { background: #2257c4; }
+  .btn-ghost { background: #eef2f8; color: #2f6fed; }
+  .btn-ghost:hover { background: #e1e8f5; }
+  .btn-danger { background: #fdecec; color: #d23b3b; }
+  .btn-danger:hover { background: #f9d7d7; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border: 1px solid #d9dee7; padding: 7px 8px; text-align: center; }
+  th { background: #f0f4fb; font-weight: 600; }
+  td.name, td.reason { text-align: left; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+  .tag.weekday { background: #e8f0ff; color: #2f6fed; }
+  .tag.weekend { background: #e7f7ec; color: #1f9d57; }
+  .tag.holiday { background: #fdeede; color: #d98324; }
+  .summary-total { font-weight: 700; background: #fff8e6; }
+  .rule { font-size: 12.5px; color: #555; line-height: 1.7; background: #f8fafc; border: 1px dashed #d7deea; border-radius: 8px; padding: 10px 12px; }
+  .rule b { color: #2f6fed; }
+  .muted { color: #999; font-size: 12px; }
+  .empty { color: #999; text-align: center; padding: 18px; }
+  .tip { font-size: 12px; color: #888; margin-top: 8px; }
+  .toast { position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); background: #2b2b2b; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; opacity: 0; transition: .25s; pointer-events: none; z-index: 99; }
+  .toast.show { opacity: .95; }
+  a.dl { color: #2f6fed; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>珠海高新区统侨科 · 加班统计与补贴核算</h1>
+  <div class="sub">离线网页应用 · 数据保存在本机浏览器 · 可导出 Excel（公示表 + 发放表，严格按模板）</div>
+
+  <!-- 统计设置 -->
+  <div class="card">
+    <h2>统计设置</h2>
+    <div class="grid">
+      <div><label>填报单位</label><input id="setUnit" value="高新区党群工作部"></div>
+      <div><label>统计月份</label><input id="setMonth" type="month" value="2026-08"></div>
+      <div><label>公示时间起</label><input id="setPubStart" placeholder="2026年8月1日"></div>
+      <div><label>公示时间止</label><input id="setPubEnd" placeholder="2026年8月5日"></div>
+      <div><label>制表日期</label><input id="setMakeDate" placeholder="2026年8月31日"></div>
+    </div>
+    <div class="tip">「统计月份」决定当前显示的加班记录与导出的表格；发放表“时间”默认与制表日期一致。</div>
+  </div>
+
+  <!-- 录入 -->
+  <div class="card">
+    <h2>录入加班记录</h2>
+    <div class="row">
+      <div><label>姓名 *</label><input id="fName" placeholder="如：徐梦华"></div>
+      <div><label>部门</label><input id="fDept" value="统战"></div>
+      <div><label>加班日期 *</label><input id="fDate" type="date"></div>
+      <div><label>加班类型 *</label>
+        <select id="fType">
+          <option value="weekday">工作日</option>
+          <option value="weekend">双休日</option>
+          <option value="holiday">法定节假日</option>
+        </select>
+      </div>
+      <div><label>加班时长(小时) *</label><input id="fHours" type="number" step="0.5" min="0" placeholder="如：3"></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div><label>起始时间</label><input id="fStart" type="time"></div>
+      <div><label>终止时间</label><input id="fEnd" type="time"></div>
+      <div style="flex:2 1 320px"><label>加班事由</label><input id="fReason" placeholder="如：跟进侨联换届相关工作"></div>
+      <div style="flex:0 0 auto"><label>&nbsp;</label><button class="btn-primary" id="btnAdd">添加记录</button></div>
+    </div>
+    <div class="tip" id="formTip"></div>
+  </div>
+
+  <!-- 当月记录 -->
+  <div class="card">
+    <h2>本月加班记录（<span id="monthLabel"></span>）</h2>
+    <div id="entryTable"></div>
+    <div class="btn-row">
+      <button class="btn-ghost" id="btnClearMonth">清空本月记录</button>
+    </div>
+  </div>
+
+  <!-- 月度汇总（发放表预览）-->
+  <div class="card">
+    <h2>月度汇总（按人）</h2>
+    <div id="summaryTable"></div>
+  </div>
+
+  <!-- 规则 -->
+  <div class="card">
+    <h2>补贴计算规则</h2>
+    <div class="rule">
+      <b>工作日加班</b>（不足1小时不计，满1小时按整段时长）：15元/小时，当天补贴最高 <b>80元</b>；<br>
+      <b>双休日加班</b>：20元/小时，当天补贴最高 <b>160元</b>；<br>
+      <b>法定节假日加班</b>：30元/小时，当天补贴最高 <b>240元</b>。<br>
+      <span class="muted">注：“当天补贴最高”按自然日封顶；同一天同一类型记一条，跨类型分别计。该规则与模板发放表样本（徐梦华 工作日7h、双休日5h、补贴205元）完全吻合。</span>
+    </div>
+  </div>
+
+  <!-- 操作 -->
+  <div class="card">
+    <h2>导出与备份</h2>
+    <div class="btn-row">
+      <button class="btn-primary" id="btnExport">导出 Excel（公示表 + 发放表）</button>
+      <button class="btn-ghost" id="btnExportJson">导出数据备份(JSON)</button>
+      <button class="btn-ghost" id="btnImportJson">导入数据备份(JSON)</button>
+      <button class="btn-danger" id="btnClearAll">清空全部数据</button>
+      <input type="file" id="fileImport" accept="application/json" style="display:none">
+    </div>
+    <div class="tip">Excel 按模板生成：<b>公示表</b>（逐条记录）与 <b>发放表</b>（按人汇总补贴），可直接打印/上报。数据仅存本机浏览器；换电脑或清缓存前请先“导出数据备份”。</div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="xlsx.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
