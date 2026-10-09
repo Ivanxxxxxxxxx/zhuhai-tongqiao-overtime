@@ -65,14 +65,15 @@
     return pad(Math.floor(totalMin / 60)) + ':' + pad(totalMin % 60);
   }
 
-  // 起止时间 → 小时（支持跨天：结束<=开始视为跨过午夜）
+  // 起止时间 → 小时（整数，支持跨天）。规则：不满1小时不计；满1小时后按整小时向上取整
   function calcHours(start, end) {
     if (!start || !end) return 0;
     const [sh, sm] = start.split(':').map(Number);
     const [eh, em] = end.split(':').map(Number);
     let mins = (eh * 60 + em) - (sh * 60 + sm);
     if (mins < 0) mins += 24 * 60;
-    return Math.round((mins / 60) * 100) / 100;
+    if (mins < 60) return 0;             // 不满1小时不计
+    return Math.ceil(mins / 60);         // 向上取整到整小时（1.1h→2h、2.5h→3h）
   }
   // ===== 24 小时制时间选择器（小时 0-23 + 分钟 0-59 两个下拉，移动端滚轮）=====
   function buildTimeSelect(selH, selM) {
@@ -95,7 +96,9 @@
   }
   function updateHoursPreview() {
     const h = calcHours(getTimeSel('fStart'), getTimeSel('fEnd'));
-    $('hoursPreview').innerHTML = `本次时长：<span class="num">${fmt(h)}</span> 小时（自动按起止时间换算）`;
+    let suffix = '小时（自动按起止时间换算，不满1小时不计、满1小时后按整小时向上取整）';
+    if (h === 0) suffix = '小时（不满1小时的不计加班，无需录入）';
+    $('hoursPreview').innerHTML = `本次时长：<span class="num">${h}</span> ${suffix}`;
     return h;
   }
 
@@ -252,7 +255,14 @@
     saveEntries(); renderAll(); toast('已删除');
   }
 
-  // ---------- 导出 Excel（按模板）----------
+  // ---------- 导出 Excel（基于内置统侨模板填数据）----------
+  function b64ToBuf(b64) {
+    const bin = atob(b64);
+    const len = bin.length;
+    const arr = new Uint8Array(len);
+    for (let i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+    return arr.buffer;
+  }
   function buildCtx() {
     const s = collectSettings();
     const [y, m] = s.month.split('-').map(Number);
@@ -264,10 +274,16 @@
     const ctx = buildCtx();
     const list = currentMonthEntries();
     if (!list.length) { toast('本月暂无记录，无法导出'); return; }
-    const ym = ctx.year + '年' + ctx.month + '月';
-    const res = G.buildMonthWorkbook(ctx, list);
-    G.downloadXlsx(res.buf, `统侨加班_${ctx.year}-${pad(ctx.month)}月_公示表+发放表.xlsx`);
-    toast(`已导出 ${ym} 表格（${list.length} 条记录）`);
+    if (!window.TQ_TEMPLATE_B64) { alert('模板未加载，请刷新页面后重试'); return; }
+    try {
+      const tplBuf = b64ToBuf(window.TQ_TEMPLATE_B64);
+      const res = G.fillTemplate(ctx, list, tplBuf);
+      G.downloadXlsx(res.buf, `统侨加班_${ctx.year}-${pad(ctx.month)}月_公示表+发放表.xlsx`);
+      const ym = ctx.year + '年' + ctx.month + '月';
+      toast(`已导出 ${ym} 表格（${list.length} 条记录，补贴合计 ${res.subT} 元）`);
+    } catch (err) {
+      alert('导出失败：' + (err && err.message ? err.message : err));
+    }
   }
 
   // ---------- 导入 Excel（按统侨模板，自动识别公示表）----------
