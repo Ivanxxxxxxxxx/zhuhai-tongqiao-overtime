@@ -2,132 +2,209 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>珠海高新区统侨科 · 加班统计与补贴核算</title>
 <style>
-  * { box-sizing: border-box; }
-  body { margin: 0; font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif; background: #f4f6f9; color: #222; }
-  .wrap { max-width: 1040px; margin: 0 auto; padding: 20px 16px 60px; }
-  h1 { font-size: 22px; margin: 8px 0 4px; }
-  .sub { color: #666; font-size: 13px; margin-bottom: 18px; }
-  .card { background: #fff; border: 1px solid #e6e9ef; border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
-  .card h2 { font-size: 16px; margin: 0 0 14px; padding-left: 9px; border-left: 4px solid #2f6fed; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
-  label { display: block; font-size: 12px; color: #555; margin-bottom: 4px; }
-  input, select, textarea { width: 100%; padding: 8px 9px; border: 1px solid #cfd6e0; border-radius: 7px; font-size: 14px; background: #fff; }
-  input:focus, select:focus, textarea:focus { outline: none; border-color: #2f6fed; box-shadow: 0 0 0 2px rgba(47,111,237,.12); }
-  textarea { resize: vertical; min-height: 38px; }
-  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
-  .row > div { flex: 1 1 160px; }
-  button { cursor: pointer; border: none; border-radius: 7px; padding: 9px 16px; font-size: 14px; font-weight: 600; transition: .15s; }
-  .btn-primary { background: #2f6fed; color: #fff; }
-  .btn-primary:hover { background: #2257c4; }
-  .btn-ghost { background: #eef2f8; color: #2f6fed; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --blue: #2f6fed; --blue-d: #2257c4; --bg: #f4f6f9; --card: #fff;
+    --line: #e6e9ef; --txt: #222; --muted: #777; --ok: #1f9d57; --warn: #d98324; --err: #d23b3b;
+  }
+  body { margin: 0; font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+    background: var(--bg); color: var(--txt); font-size: 15px; line-height: 1.5; }
+  .screen { min-height: 100vh; }
+  [hidden] { display: none !important; }
+
+  /* ===== 登录屏 ===== */
+  .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .login-card { width: 100%; max-width: 380px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 26px 22px; box-shadow: 0 6px 24px rgba(0,0,0,.06); }
+  .login-card h1 { font-size: 19px; margin: 0 0 6px; text-align: center; }
+  .login-card .sub { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .login-card label { display: block; font-size: 13px; color: #555; margin: 14px 0 6px; }
+  .login-card input { width: 100%; padding: 12px 12px; border: 1px solid #cfd6e0; border-radius: 9px; font-size: 15px; background: #fff; }
+  .login-card input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(47,111,237,.12); }
+  .login-card .btn-primary { width: 100%; margin-top: 22px; padding: 13px; font-size: 16px; }
+  .login-card .tip { font-size: 12px; color: #999; text-align: center; margin-top: 16px; line-height: 1.6; }
+
+  /* ===== 主屏 ===== */
+  .wrap { max-width: 980px; margin: 0 auto; padding: 16px 14px 60px; }
+  .topbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+  .topbar .who { font-size: 14px; color: #444; }
+  .topbar .who b { color: var(--blue); }
+  .topbar .spacer { flex: 1; }
+  h1.title { font-size: 20px; margin: 10px 0 2px; }
+  .sub { color: #666; font-size: 13px; margin-bottom: 16px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+  .card h2 { font-size: 16px; margin: 0 0 14px; padding-left: 9px; border-left: 4px solid var(--blue); }
+
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .field { display: flex; flex-direction: column; }
+  label { font-size: 12.5px; color: #555; margin-bottom: 5px; }
+  input, select, textarea { width: 100%; padding: 11px 10px; border: 1px solid #cfd6e0; border-radius: 9px; font-size: 15px; background: #fff; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(47,111,237,.12); }
+  textarea { resize: vertical; min-height: 42px; }
+  input[readonly] { background: #f3f5f9; color: #555; }
+  .hours-preview { margin-top: 12px; font-size: 14px; background: #eef4ff; border: 1px solid #d6e3ff; color: var(--blue-d);
+    border-radius: 9px; padding: 10px 12px; font-weight: 600; }
+  .hours-preview .num { font-size: 17px; }
+
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  button { cursor: pointer; border: none; border-radius: 9px; padding: 12px 18px; font-size: 15px; font-weight: 600; transition: .15s; }
+  .btn-primary { background: var(--blue); color: #fff; }
+  .btn-primary:hover { background: var(--blue-d); }
+  .btn-ghost { background: #eef2f8; color: var(--blue); }
   .btn-ghost:hover { background: #e1e8f5; }
-  .btn-danger { background: #fdecec; color: #d23b3b; }
+  .btn-danger { background: #fdecec; color: var(--err); }
   .btn-danger:hover { background: #f9d7d7; }
-  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { border: 1px solid #d9dee7; padding: 7px 8px; text-align: center; }
+  .btn-sm { padding: 9px 14px; font-size: 14px; }
+
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 560px; }
+  th, td { border: 1px solid #d9dee7; padding: 8px; text-align: center; white-space: nowrap; }
   th { background: #f0f4fb; font-weight: 600; }
-  td.name, td.reason { text-align: left; }
-  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
-  .tag.weekday { background: #e8f0ff; color: #2f6fed; }
-  .tag.weekend { background: #e7f7ec; color: #1f9d57; }
-  .tag.holiday { background: #fdeede; color: #d98324; }
+  td.name, td.reason { text-align: left; white-space: normal; }
+  .tag { display: inline-block; padding: 1px 9px; border-radius: 10px; font-size: 12px; }
+  .tag.weekday { background: #e8f0ff; color: var(--blue); }
+  .tag.weekend { background: #e7f7ec; color: var(--ok); }
+  .tag.holiday { background: #fdeede; color: var(--warn); }
   .summary-total { font-weight: 700; background: #fff8e6; }
-  .rule { font-size: 12.5px; color: #555; line-height: 1.7; background: #f8fafc; border: 1px dashed #d7deea; border-radius: 8px; padding: 10px 12px; }
-  .rule b { color: #2f6fed; }
+  .rule { font-size: 12.5px; color: #555; line-height: 1.7; background: #f8fafc; border: 1px dashed #d7deea; border-radius: 9px; padding: 11px 13px; }
+  .rule b { color: var(--blue); }
   .muted { color: #999; font-size: 12px; }
   .empty { color: #999; text-align: center; padding: 18px; }
-  .tip { font-size: 12px; color: #888; margin-top: 8px; }
-  .toast { position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); background: #2b2b2b; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; opacity: 0; transition: .25s; pointer-events: none; z-index: 99; }
+  .tip { font-size: 12px; color: #888; margin-top: 8px; line-height: 1.6; }
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); background: #2b2b2b; color: #fff;
+    padding: 11px 18px; border-radius: 9px; font-size: 13px; opacity: 0; transition: .25s; pointer-events: none; z-index: 99; max-width: 90vw; }
   .toast.show { opacity: .95; }
-  a.dl { color: #2f6fed; }
+  a.dl { color: var(--blue); cursor: pointer; }
+
+  /* ===== 移动端优化 ===== */
+  @media (max-width: 560px) {
+    body { font-size: 14px; }
+    .wrap { padding: 12px 10px 56px; }
+    .form-grid { grid-template-columns: 1fr; }
+    .card { padding: 14px 12px; }
+    h1.title { font-size: 18px; }
+    .card h2 { font-size: 15px; }
+    .btn-row { flex-direction: column; }
+    .btn-row button { width: 100%; }
+    table { font-size: 12px; min-width: 520px; }
+    .topbar .who { font-size: 13px; }
+    .topbar .btn-sm { padding: 8px 12px; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>珠海高新区统侨科 · 加班统计与补贴核算</h1>
-  <div class="sub">离线网页应用 · 数据保存在本机浏览器 · 可导出 Excel（公示表 + 发放表，严格按模板）</div>
 
-  <!-- 统计设置 -->
-  <div class="card">
-    <h2>统计设置</h2>
-    <div class="grid">
-      <div><label>填报单位</label><input id="setUnit" value="高新区党群工作部"></div>
-      <div><label>统计月份</label><input id="setMonth" type="month" value="2026-08"></div>
-      <div><label>公示时间起</label><input id="setPubStart" placeholder="2026年8月1日"></div>
-      <div><label>公示时间止</label><input id="setPubEnd" placeholder="2026年8月5日"></div>
-      <div><label>制表日期</label><input id="setMakeDate" placeholder="2026年8月31日"></div>
+<!-- 登录屏 -->
+<div id="loginScreen" class="screen">
+  <div class="login-wrap">
+    <div class="login-card">
+      <h1>统侨科加班统计</h1>
+      <div class="sub">本机离线使用 · 请先登录个人信息</div>
+      <label for="loginName">姓名 *</label>
+      <input id="loginName" placeholder="如：徐梦华" autocomplete="name">
+      <label for="loginDept">部门</label>
+      <input id="loginDept" value="统战" placeholder="如：统战">
+      <button class="btn-primary" id="btnLogin">进入</button>
+      <div class="tip">数据仅保存在本机浏览器，按登录人隔离。<br>同一姓名即同一账号，可切换不同人分别记录。</div>
     </div>
-    <div class="tip">「统计月份」决定当前显示的加班记录与导出的表格；发放表“时间”默认与制表日期一致。</div>
-  </div>
-
-  <!-- 录入 -->
-  <div class="card">
-    <h2>录入加班记录</h2>
-    <div class="row">
-      <div><label>姓名 *</label><input id="fName" placeholder="如：徐梦华"></div>
-      <div><label>部门</label><input id="fDept" value="统战"></div>
-      <div><label>加班日期 *</label><input id="fDate" type="date"></div>
-      <div><label>加班类型 *</label>
-        <select id="fType">
-          <option value="weekday">工作日</option>
-          <option value="weekend">双休日</option>
-          <option value="holiday">法定节假日</option>
-        </select>
-      </div>
-      <div><label>加班时长(小时) *</label><input id="fHours" type="number" step="0.5" min="0" placeholder="如：3"></div>
-    </div>
-    <div class="row" style="margin-top:12px">
-      <div><label>起始时间</label><input id="fStart" type="time"></div>
-      <div><label>终止时间</label><input id="fEnd" type="time"></div>
-      <div style="flex:2 1 320px"><label>加班事由</label><input id="fReason" placeholder="如：跟进侨联换届相关工作"></div>
-      <div style="flex:0 0 auto"><label>&nbsp;</label><button class="btn-primary" id="btnAdd">添加记录</button></div>
-    </div>
-    <div class="tip" id="formTip"></div>
-  </div>
-
-  <!-- 当月记录 -->
-  <div class="card">
-    <h2>本月加班记录（<span id="monthLabel"></span>）</h2>
-    <div id="entryTable"></div>
-    <div class="btn-row">
-      <button class="btn-ghost" id="btnClearMonth">清空本月记录</button>
-    </div>
-  </div>
-
-  <!-- 月度汇总（发放表预览）-->
-  <div class="card">
-    <h2>月度汇总（按人）</h2>
-    <div id="summaryTable"></div>
-  </div>
-
-  <!-- 规则 -->
-  <div class="card">
-    <h2>补贴计算规则</h2>
-    <div class="rule">
-      <b>工作日加班</b>（不足1小时不计，满1小时按整段时长）：15元/小时，当天补贴最高 <b>80元</b>；<br>
-      <b>双休日加班</b>：20元/小时，当天补贴最高 <b>160元</b>；<br>
-      <b>法定节假日加班</b>：30元/小时，当天补贴最高 <b>240元</b>。<br>
-      <span class="muted">注：“当天补贴最高”按自然日封顶；同一天同一类型记一条，跨类型分别计。该规则与模板发放表样本（徐梦华 工作日7h、双休日5h、补贴205元）完全吻合。</span>
-    </div>
-  </div>
-
-  <!-- 操作 -->
-  <div class="card">
-    <h2>导出与备份</h2>
-    <div class="btn-row">
-      <button class="btn-primary" id="btnExport">导出 Excel（公示表 + 发放表）</button>
-      <button class="btn-ghost" id="btnExportJson">导出数据备份(JSON)</button>
-      <button class="btn-ghost" id="btnImportJson">导入数据备份(JSON)</button>
-      <button class="btn-danger" id="btnClearAll">清空全部数据</button>
-      <input type="file" id="fileImport" accept="application/json" style="display:none">
-    </div>
-    <div class="tip">Excel 按模板生成：<b>公示表</b>（逐条记录）与 <b>发放表</b>（按人汇总补贴），可直接打印/上报。数据仅存本机浏览器；换电脑或清缓存前请先“导出数据备份”。</div>
   </div>
 </div>
+
+<!-- 主屏 -->
+<div id="appScreen" class="screen" hidden>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="who">当前用户：<b id="whoName"></b> <span id="whoDept" class="muted"></span></div>
+      <div class="spacer"></div>
+      <button class="btn-ghost btn-sm" id="btnLogout">退出 / 切换</button>
+    </div>
+    <h1 class="title">珠海高新区统侨科 · 加班统计与补贴核算</h1>
+    <div class="sub">离线网页应用 · 数据保存在本机浏览器 · 可导出 Excel（公示表 + 发放表，严格按模板）</div>
+
+    <!-- 统计设置 -->
+    <div class="card">
+      <h2>统计设置</h2>
+      <div class="form-grid">
+        <div class="field"><label>填报单位</label><input id="setUnit" value="高新区党群工作部"></div>
+        <div class="field"><label>统计月份</label><input id="setMonth" type="month" value=""></div>
+        <div class="field"><label>公示时间起</label><input id="setPubStart" placeholder="2026年8月1日"></div>
+        <div class="field"><label>公示时间止</label><input id="setPubEnd" placeholder="2026年8月5日"></div>
+        <div class="field"><label>制表日期</label><input id="setMakeDate" placeholder="2026年8月31日"></div>
+      </div>
+      <div class="tip">「统计月份」决定当前显示的加班记录与导出的表格。</div>
+    </div>
+
+    <!-- 录入 -->
+    <div class="card">
+      <h2>录入加班记录</h2>
+      <div class="form-grid">
+        <div class="field"><label>加班日期 *</label><input id="fDate" type="date"></div>
+        <div class="field"><label>加班类型 *</label>
+          <select id="fType">
+            <option value="weekday">工作日</option>
+            <option value="weekend">双休日</option>
+            <option value="holiday">法定节假日</option>
+          </select>
+        </div>
+        <div class="field"><label>起始时间 *</label><input id="fStart" type="time"></div>
+        <div class="field"><label>终止时间 *</label><input id="fEnd" type="time"></div>
+      </div>
+      <div class="form-grid" style="margin-top:12px">
+        <div class="field" style="grid-column: 1 / -1"><label>加班事由</label><input id="fReason" placeholder="如：跟进侨联换届相关工作"></div>
+      </div>
+      <div class="hours-preview" id="hoursPreview">本次时长：<span class="num">0.00</span> 小时（自动按起止时间换算）</div>
+      <div class="tip" id="formTip"></div>
+      <div class="btn-row">
+        <button class="btn-primary" id="btnAdd">添加记录</button>
+        <button class="btn-ghost" id="btnClearForm">清空输入</button>
+      </div>
+    </div>
+
+    <!-- 当月记录 -->
+    <div class="card">
+      <h2>本月加班记录（<span id="monthLabel"></span>）</h2>
+      <div class="table-wrap"><div id="entryTable"></div></div>
+      <div class="btn-row">
+        <button class="btn-danger btn-sm" id="btnClearMonth">清空本月记录</button>
+      </div>
+    </div>
+
+    <!-- 月度汇总 -->
+    <div class="card">
+      <h2>月度汇总（本人）</h2>
+      <div class="table-wrap"><div id="summaryTable"></div></div>
+    </div>
+
+    <!-- 规则 -->
+    <div class="card">
+      <h2>补贴计算规则</h2>
+      <div class="rule">
+        <b>工作日加班</b>（不足1小时不计，满1小时按整段时长）：15元/小时，当天补贴最高 <b>80元</b>；<br>
+        <b>双休日加班</b>：20元/小时，当天补贴最高 <b>160元</b>；<br>
+        <b>法定节假日加班</b>：30元/小时，当天补贴最高 <b>240元</b>。<br>
+        <span class="muted">注：“当天补贴最高”按自然日封顶；同一天同一类型记一条，跨类型分别计。规则与模板发放表样本（徐梦华 工作日7h、双休日5h、补贴205元）完全吻合。</span>
+      </div>
+    </div>
+
+    <!-- 操作 -->
+    <div class="card">
+      <h2>导出与备份</h2>
+      <div class="btn-row">
+        <button class="btn-primary" id="btnExport">导出 Excel（公示表 + 发放表）</button>
+        <button class="btn-ghost" id="btnExportJson">导出数据备份(JSON)</button>
+        <button class="btn-ghost" id="btnImportJson">导入数据备份(JSON)</button>
+        <button class="btn-danger" id="btnClearAll">清空本人全部数据</button>
+        <input type="file" id="fileImport" accept="application/json" style="display:none">
+      </div>
+      <div class="tip">Excel 按模板生成：<b>公示表</b>（逐条记录）与 <b>发放表</b>（按人汇总补贴），可直接打印/上报。数据仅存本机浏览器；换电脑或清缓存前请先“导出数据备份”。</div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 <script src="xlsx.js"></script>
 <script src="app.js"></script>
