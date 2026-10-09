@@ -1,108 +1,17 @@
-/* 纯 JS 的 XLSX 生成器（无外部依赖，stored zip + CRC32）
+/* 统侨科加班统计 — 导出组件
+ * 方案：直接基于内置的「统侨模板」底座（vendor/template.js 提供的原 .xls），
+ *        把当月数据逐格填入对应位置，再另存为 .xlsx。
+ *        —— 不自行重建表格、不自行添加合并，彻底避免表头跨列/合并错位。
+ * 依赖：window.XLSX（vendor/xlsx.full.min.js 的 SheetJS）
  * 浏览器端：window.XLSXGen；Node 端：module.exports
- * 已用真实模板样本校验：徐梦华 工作日7h 双休日5h 补贴=205 元，与模板发放表数字完全吻合。
  */
 (function (root, factory) {
   const api = factory();
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.XLSXGen = api;
 })(this, function () {
-  const enc = new TextEncoder();
-
-  function crc32(buf) {
-    let table = crc32.table;
-    if (!table) {
-      table = crc32.table = new Uint32Array(256);
-      for (let n = 0; n < 256; n++) {
-        let c = n;
-        for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
-        table[n] = c >>> 0;
-      }
-    }
-    let crc = 0xFFFFFFFF;
-    for (let i = 0; i < buf.length; i++) crc = (crc >>> 8) ^ table[(crc ^ buf[i]) & 0xFF];
-    return (crc ^ 0xFFFFFFFF) >>> 0;
-  }
-
-  function zip(files) {
-    const parts = [];
-    const central = [];
-    let offset = 0;
-    for (const f of files) {
-      const nameBytes = enc.encode(f.name);
-      const data = f.data;
-      const crc = crc32(data);
-      const size = data.length;
-      const lh = new Uint8Array(30 + nameBytes.length);
-      const dv = new DataView(lh.buffer);
-      dv.setUint32(0, 0x04034b50, true);
-      dv.setUint16(4, 20, true);
-      dv.setUint16(6, 0, true);
-      dv.setUint16(8, 0, true);
-      dv.setUint16(10, 0, true);
-      dv.setUint16(12, 0, true);
-      dv.setUint32(14, crc, true);
-      dv.setUint32(18, size, true);
-      dv.setUint32(22, size, true);
-      dv.setUint16(26, nameBytes.length, true);
-      dv.setUint16(28, 0, true);
-      lh.set(nameBytes, 30);
-      parts.push(lh, data);
-      const ch = new Uint8Array(46 + nameBytes.length);
-      const cdv = new DataView(ch.buffer);
-      cdv.setUint32(0, 0x02014b50, true);
-      cdv.setUint16(4, 20, true);
-      cdv.setUint16(6, 20, true);
-      cdv.setUint16(8, 0, true);
-      cdv.setUint16(10, 0, true);
-      cdv.setUint16(12, 0, true);
-      cdv.setUint16(14, 0, true);
-      cdv.setUint32(16, crc, true);
-      cdv.setUint32(20, size, true);
-      cdv.setUint32(24, size, true);
-      cdv.setUint16(28, nameBytes.length, true);
-      cdv.setUint16(30, 0, true);
-      cdv.setUint16(32, 0, true);
-      cdv.setUint16(34, 0, true);
-      cdv.setUint16(36, 0, true);
-      cdv.setUint16(38, 0, true);
-      cdv.setUint32(42, offset, true); // 本地文件头偏移（中央目录第42字节）
-      ch.set(nameBytes, 46);
-      central.push(ch);
-      offset += lh.length + data.length;
-    }
-    const centralSize = central.reduce((s, c) => s + c.length, 0);
-    const centralOffset = offset;
-    const end = new Uint8Array(22);
-    const edv = new DataView(end.buffer);
-    edv.setUint32(0, 0x06054b50, true);
-    edv.setUint16(4, 0, true);
-    edv.setUint16(6, 0, true);
-    edv.setUint16(8, files.length, true);
-    edv.setUint16(10, files.length, true);
-    edv.setUint32(12, centralSize, true);
-    edv.setUint32(16, centralOffset, true);
-    edv.setUint16(20, 0, true);
-    const all = [...parts, ...central, end];
-    const total = all.reduce((s, a) => s + a.length, 0);
-    const out = new Uint8Array(total);
-    let p = 0;
-    for (const c of all) { out.set(c, p); p += c.length; }
-    return out;
-  }
-
-  function xmlEsc(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-  function colLetter(c) {
-    let s = ''; c++;
-    while (c > 0) { const m = (c - 1) % 26; s = String.fromCharCode(65 + m) + s; c = Math.floor((c - 1) / 26); }
-    return s;
-  }
-  function ref(c, r) { return colLetter(c) + (r + 1); }
-
   // ===== 补贴计算规则（与模板真实数字吻合）=====
-  // 不满1小时不算；满1小时后按小时向上取整（1.1h按2h、2.5h按3h…）
+  // 不满1小时不计；满1小时后按小时向上取整（1.1h按2h、2.5h按3h…）
   // 工作日：15元/小时，封顶80元/天；双休日：20元/小时，封顶160元/天；法定节假日：30元/小时，封顶240元/天
   const RATES = { weekday: 15, weekend: 20, holiday: 30 };
   const CAPS = { weekday: 80, weekend: 160, holiday: 240 };
@@ -113,182 +22,186 @@
     return Math.min(h * RATES[type], CAPS[type]);
   }
 
-  function buildSheetXML(cols, cells) {
-    const byRow = {};
-    for (const cell of cells) (byRow[cell.r] = byRow[cell.r] || []).push(cell);
-    let colXml = '';
-    if (cols && cols.length) {
-      colXml = '<cols>' + cols.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('') + '</cols>';
-    }
-    let rowsXml = '';
-    const rowIdxs = Object.keys(byRow).map(Number).sort((a, b) => a - b);
-    for (const r of rowIdxs) {
-      const rowCells = byRow[r].slice().sort((a, b) => a.c - b.c);
-      let cXml = '';
-      for (const cell of rowCells) {
-        const R = ref(cell.c, r);
-        if (cell.t === 'n') {
-          cXml += `<c r="${R}" s="${cell.s}"><v>${cell.v}</v></c>`;
-        } else {
-          cXml += `<c r="${R}" s="${cell.s}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(cell.v)}</t></is></c>`;
-        }
+  function XLSX() { return (typeof window !== 'undefined' && window.XLSX) || (typeof global !== 'undefined' && global.window && global.window.XLSX); }
+
+  // 在某个 sheet 中找「同时含所有关键词」的行（0-based 行号）
+  function findRow(ws, keywords) {
+    const XU = XLSX().utils;
+    const range = XU.decode_range(ws['!ref']);
+    for (let r = range.s.r; r <= range.e.r; r++) {
+      const vals = [];
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cell = ws[XU.encode_cell({ r, c })];
+        if (cell && cell.v != null) vals.push(String(cell.v));
       }
-      rowsXml += `<row r="${r + 1}">${cXml}</row>`;
+      const joined = vals.join(' ');
+      if (keywords.every(k => joined.indexOf(k) >= 0)) return r;
     }
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${colXml}<sheetData>${rowsXml}</sheetData></worksheet>`;
+    return -1;
+  }
+  // 取某列在数据区的首个样式（s），用于写入新行时沿用边框/字体
+  function colStyle(ws, col, r0, r1) {
+    const XU = XLSX().utils;
+    for (let r = r0; r <= r1; r++) {
+      const cell = ws[XU.encode_cell({ r, c: col })];
+      if (cell && cell.s != null) return cell.s;
+    }
+    return undefined;
+  }
+  function setCell(ws, r, c, value, style, type) {
+    const XU = XLSX().utils;
+    const addr = XU.encode_cell({ r, c });
+    if (value === '' || value == null) {
+      ws[addr] = { t: 's', v: '' };
+    } else {
+      ws[addr] = { t: type || (typeof value === 'number' ? 'n' : 's'), v: value };
+    }
+    if (style != null) ws[addr].s = style;
+  }
+  // 把 beforeRow（0-based，含）及之后的所有行整体下移 count 行，并处理合并区
+  function insertRows(ws, beforeRow, count) {
+    if (count <= 0) return;
+    const XU = XLSX().utils;
+    const moves = [];
+    for (const addr in ws) {
+      if (addr[0] === '!') continue;
+      const cc = XU.decode_cell(addr);
+      if (cc.r >= beforeRow) moves.push(addr);
+    }
+    moves.sort((a, b) => XU.decode_cell(b).r - XU.decode_cell(a).r);
+    for (const addr of moves) {
+      const cc = XU.decode_cell(addr);
+      const cell = ws[addr];
+      delete ws[addr];
+      ws[XU.encode_cell({ r: cc.r + count, c: cc.c })] = cell;
+    }
+    const range = XU.decode_range(ws['!ref']);
+    range.e.r += count;
+    ws['!ref'] = XU.encode_range(range);
+    if (ws['!merges']) {
+      ws['!merges'] = ws['!merges'].map(m => ({
+        s: { r: m.s.r >= beforeRow ? m.s.r + count : m.s.r, c: m.s.c },
+        e: { r: m.e.r >= beforeRow ? m.e.r + count : m.e.r, c: m.e.c },
+      }));
+    }
   }
 
-  function buildWorkbook(sheets) {
-    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-<Default Extension="xml" ContentType="application/xml"/>
-<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
-<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
-</Types>`;
-    const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
-<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
-<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
-</Relationships>`;
-    const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-<sheets>
-${sheets.map((s, i) => `<sheet name="${xmlEsc(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('\n')}
-</sheets>
-</workbook>`;
-    const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-${sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('\n')}
-<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>`;
-    const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<fonts count="3">
-<font><sz val="11"/><name val="宋体"/></font>
-<font><b/><sz val="11"/><name val="宋体"/></font>
-<font><b/><sz val="16"/><name val="宋体"/></font>
-</fonts>
-<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>
-<borders count="2">
-<border><left/><right/><top/><bottom/><diagonal/></border>
-<border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border>
-</borders>
-<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="7">
-<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
-<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="top" wrapText="1"/></xf>
-</cellXfs>
-</styleSheet>`;
-    const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:creator>统侨科加班统计</dc:creator><cp:lastModifiedBy>统侨科加班统计</cp:lastModifiedBy></cp:coreProperties>`;
-    const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>统侨科加班统计</Application></Properties>`;
+  // 把「向上取整后的整数小时」写入模板三类时长列
+  function effInt(h) { const v = effHours(h); return v; }
 
-    const files = [
-      { name: '[Content_Types].xml', data: enc.encode(contentTypes) },
-      { name: '_rels/.rels', data: enc.encode(rootRels) },
-      { name: 'docProps/core.xml', data: enc.encode(coreXml) },
-      { name: 'docProps/app.xml', data: enc.encode(appXml) },
-      { name: 'xl/workbook.xml', data: enc.encode(workbookXml) },
-      { name: 'xl/_rels/workbook.xml.rels', data: enc.encode(wbRels) },
-      { name: 'xl/styles.xml', data: enc.encode(stylesXml) },
-    ];
-    sheets.forEach((s, i) => files.push({ name: `xl/worksheets/sheet${i + 1}.xml`, data: enc.encode(buildSheetXML(s.cols, s.cells)) }));
-    return zip(files);
-  }
+  /* 核心：基于模板底座填数据
+   * ctx: {year, month, unit, pubStart, pubEnd, makeDate, timeStr}
+   * entries: 当月记录数组 [{date,type,name,dept,hours,start,end,reason}]
+   * tplBuf: 模板文件 ArrayBuffer/Uint8Array
+   * 返回 { buf: Uint8Array(xlsx), subT }
+   */
+  function fillTemplate(ctx, entries, tplBuf) {
+    const X = XLSX(); const XU = X.utils;
+    const wb = X.read(tplBuf, { type: 'array', cellDates: true, cellStyles: true });
+    const ymLabel = `${ctx.year}年${ctx.month}月`;
 
-  // 按模板构建「公示表 + 发放表」。返回 {buf, people, wkSum, weSum, hoSum, subT}
-  function buildMonthWorkbook(ctx, entries) {
-    const { year, month, unit, pubStart, pubEnd, makeDate, timeStr } = ctx;
-    const ymLabel = `${year}年${month}月`;
-    const S = { title: 1, header: 2, data: 3, dataLeft: 4, bold: 5, note: 6 };
+    const gName = wb.SheetNames.find(n => String(n).indexOf('公示') >= 0) || wb.SheetNames[0];
+    const fName = wb.SheetNames.find(n => String(n).indexOf('发放') >= 0) || wb.SheetNames[1] || wb.SheetNames[0];
+    const gws = wb.Sheets[gName];
+    const fws = wb.Sheets[fName];
 
-    // ===== 公示表 =====
-    const gCells = [];
-    gCells.push({ c: 0, r: 0, t: 's', v: `珠海高新区合同制职员加班情况公示表（${ymLabel}）`, s: S.title });
-    gCells.push({ c: 0, r: 2, t: 's', v: `填报单位：${unit}`, s: S.note });
-    gCells.push({ c: 5, r: 2, t: 's', v: `公示时间：${pubStart}至${pubEnd}`, s: S.note });
-    gCells.push({ c: 9, r: 2, t: 's', v: `制表日期：${makeDate}`, s: S.note });
-    const gHead = ['序号', '部门', '姓名', '加班日期', '加班时间（小时）', '', '', '加时时段', '', '加班事由'];
-    gHead.forEach((v, c) => { if (v) gCells.push({ c, r: 3, t: 's', v, s: S.header }); });
-    const gSub = { 4: '工作日', 5: '双休日', 6: '法定\n节假日', 7: '起始时间', 8: '终止时间' };
-    Object.entries(gSub).forEach(([c, v]) => gCells.push({ c: Number(c), r: 4, t: 's', v, s: S.header }));
+    // ===================== 公示表 =====================
+    const gHead = findRow(gws, ['姓名', '加班日期']);
+    const gSub = findRow(gws, ['工作日']) >= 0 ? findRow(gws, ['工作日']) : gHead + 1;
+    const gDataStart = gSub + 1;
+    const gTotalRow = findRow(gws, ['小计']);
+    const gTplRows = gTotalRow - gDataStart;
+    const gColStyle = [];
+    for (let c = 0; c < 10; c++) gColStyle[c] = colStyle(gws, c, gDataStart, gTotalRow - 1);
+
+    const gNeed = entries.length;
+    if (gNeed > gTplRows) insertRows(gws, gTotalRow, gNeed - gTplRows);
+    const gTotalNew = findRow(gws, ['小计']); // 下移后重新定位
 
     let wkSum = 0, weSum = 0, hoSum = 0;
-    entries.forEach((e, i) => {
-      const r = 5 + i;
-      gCells.push({ c: 0, r, t: 'n', v: i + 1, s: S.data });
-      gCells.push({ c: 1, r, t: 's', v: e.dept || '', s: S.data });
-      gCells.push({ c: 2, r, t: 's', v: e.name, s: S.data });
-      gCells.push({ c: 3, r, t: 's', v: e.date, s: S.data });
-      const col = e.type === 'weekday' ? 4 : e.type === 'weekend' ? 5 : 6;
-      gCells.push({ c: col, r, t: 'n', v: e.hours, s: S.data });
-      if (e.type === 'weekday') wkSum += e.hours; else if (e.type === 'weekend') weSum += e.hours; else hoSum += e.hours;
-      gCells.push({ c: 7, r, t: 's', v: e.start || '', s: S.data });
-      gCells.push({ c: 8, r, t: 's', v: e.end || '', s: S.data });
-      gCells.push({ c: 9, r, t: 's', v: e.reason || '', s: S.dataLeft });
-    });
-    const gEnd = 5 + entries.length;
-    gCells.push({ c: 1, r: gEnd, t: 's', v: '小计', s: S.bold });
-    gCells.push({ c: 4, r: gEnd, t: 'n', v: wkSum, s: S.data });
-    gCells.push({ c: 5, r: gEnd, t: 'n', v: weSum, s: S.data });
-    gCells.push({ c: 6, r: gEnd, t: 'n', v: hoSum, s: S.data });
-    gCells.push({ c: 0, r: gEnd + 1, t: 's', v: '制表人：                   科室负责人意见：                                分管领导意见：', s: S.note });
-    const gSheet = { name: '公示表', cols: [6, 10, 10, 14, 10, 10, 12, 10, 10, 40], cells: gCells };
+    const gFinal = Math.max(gNeed, gTplRows);
+    for (let i = 0; i < gFinal; i++) {
+      const r = gDataStart + i;
+      if (i < gNeed) {
+        const e = entries[i];
+        const col = e.type === 'weekday' ? 4 : e.type === 'weekend' ? 5 : 6;
+        const h = effInt(e.hours);
+        setCell(gws, r, 0, i + 1, gColStyle[0], 'n');
+        setCell(gws, r, 1, e.dept || '', gColStyle[1]);
+        setCell(gws, r, 2, e.name, gColStyle[2]);
+        setCell(gws, r, 3, e.date, gColStyle[3]);
+        setCell(gws, r, 4, e.type === 'weekday' ? h : '', gColStyle[4], 'n');
+        setCell(gws, r, 5, e.type === 'weekend' ? h : '', gColStyle[5], 'n');
+        setCell(gws, r, 6, e.type === 'holiday' ? h : '', gColStyle[6], 'n');
+        setCell(gws, r, 7, e.start || '', gColStyle[7]);
+        setCell(gws, r, 8, e.end || '', gColStyle[8]);
+        setCell(gws, r, 9, e.reason || '', gColStyle[9]);
+        if (e.type === 'weekday') wkSum += h; else if (e.type === 'weekend') weSum += h; else hoSum += h;
+      } else {
+        for (let c = 0; c < 10; c++) setCell(gws, r, c, '', gColStyle[c]);
+      }
+    }
+    setCell(gws, gTotalNew, 1, '小计', gColStyle[1]);
+    setCell(gws, gTotalNew, 4, wkSum, gColStyle[4], 'n');
+    setCell(gws, gTotalNew, 5, weSum, gColStyle[5], 'n');
+    setCell(gws, gTotalNew, 6, hoSum, gColStyle[6], 'n');
+    // 标题与日期
+    setCell(gws, 0, 0, `珠海高新区合同制职员加班情况公示表（${ymLabel}）`, colStyle(gws, 0, 0, 0));
+    setCell(gws, 2, 0, `填报单位：${ctx.unit}`, colStyle(gws, 0, 2, 2));
+    setCell(gws, 2, 5, `公示时间：${ctx.pubStart}至${ctx.pubEnd}`, colStyle(gws, 5, 2, 2));
+    setCell(gws, 2, 9, `制表日期：${ctx.makeDate}`, colStyle(gws, 9, 2, 2));
 
-    // ===== 发放表（按人汇总）=====
+    // ===================== 发放表（按人汇总）=====================
+    const fHead = findRow(fws, ['序号', '姓名', '累计加班时间']) >= 0 ? findRow(fws, ['序号', '姓名', '累计加班时间']) : findRow(fws, ['姓名']);
+    const fSub = findRow(fws, ['工作日加班']) >= 0 ? findRow(fws, ['工作日加班']) : fHead + 1;
+    const fDataStart = fSub + 1;
+    const fTotalRow = findRow(fws, ['合计']);
+    const fTplRows = fTotalRow - fDataStart;
+    const fColStyle = [];
+    for (let c = 0; c < 7; c++) fColStyle[c] = colStyle(fws, c, fDataStart, fTotalRow - 1);
+
     const people = {};
     for (const e of entries) {
       const p = people[e.name] = people[e.name] || { name: e.name, wk: 0, we: 0, ho: 0, sub: 0 };
-      if (e.type === 'weekday') p.wk += e.hours; else if (e.type === 'weekend') p.we += e.hours; else p.ho += e.hours;
+      const h = effInt(e.hours);
+      if (e.type === 'weekday') p.wk += h; else if (e.type === 'weekend') p.we += h; else p.ho += h;
       p.sub += entrySubsidy(e.type, e.hours);
     }
     const names = Object.keys(people);
-    const fCells = [];
-    fCells.push({ c: 0, r: 0, t: 's', v: `${ymLabel}珠海高新区合同制职员加班补贴发放表`, s: S.title });
-    fCells.push({ c: 0, r: 2, t: 's', v: `填报单位：${unit}`, s: S.note });
-    fCells.push({ c: 5, r: 2, t: 's', v: `时间：${timeStr}`, s: S.note });
-    const fHead = ['序号', '姓名', '累计加班时间（小时）', '', '', '加班补贴金额\n（元）', '备注'];
-    fHead.forEach((v, c) => { if (v) fCells.push({ c, r: 3, t: 's', v, s: S.header }); });
-    const fSub = { 2: '工作日加班', 3: '双休日加班', 4: '法定节假日\n加班' };
-    Object.entries(fSub).forEach(([c, v]) => fCells.push({ c: Number(c), r: 4, t: 's', v, s: S.header }));
-    let wkT = 0, weT = 0, hoT = 0, subT = 0;
-    names.forEach((nm, i) => {
-      const p = people[nm]; const r = 5 + i;
-      fCells.push({ c: 0, r, t: 'n', v: i + 1, s: S.data });
-      fCells.push({ c: 1, r, t: 's', v: p.name, s: S.data });
-      fCells.push({ c: 2, r, t: 'n', v: p.wk, s: S.data });
-      fCells.push({ c: 3, r, t: 'n', v: p.we, s: S.data });
-      fCells.push({ c: 4, r, t: 'n', v: p.ho, s: S.data });
-      fCells.push({ c: 5, r, t: 'n', v: Math.round(p.sub * 100) / 100, s: S.data });
-      fCells.push({ c: 6, r, t: 's', v: '', s: S.dataLeft });
-      wkT += p.wk; weT += p.we; hoT += p.ho; subT += p.sub;
-    });
-    const fEnd = 5 + names.length;
-    fCells.push({ c: 0, r: fEnd, t: 's', v: '合计', s: S.bold });
-    fCells.push({ c: 2, r: fEnd, t: 'n', v: wkT, s: S.data });
-    fCells.push({ c: 3, r: fEnd, t: 'n', v: weT, s: S.data });
-    fCells.push({ c: 4, r: fEnd, t: 'n', v: hoT, s: S.data });
-    fCells.push({ c: 5, r: fEnd, t: 'n', v: Math.round(subT * 100) / 100, s: S.data });
-    const rules = '备注：加班补贴按小时向上取整核算（不满1小时不计，满1小时后1.1小时按2小时算，以此类推）；工作日加班以15元/小时标准计算，当天加班补贴最高为80元；双休日加班以20元/小时标准计算，当天加班补贴最高为160元；法定节假日加班以30元/小时标准计算，当天加班补贴最高为240元。';
-    fCells.push({ c: 0, r: fEnd + 1, t: 's', v: rules, s: S.note });
-    fCells.push({ c: 0, r: fEnd + 2, t: 's', v: '制表人：                                   单位意见：                 ', s: S.note });
-    fCells.push({ c: 0, r: fEnd + 3, t: 's', v: '党群工作部意见：                               发改财政局意见：', s: S.note });
-    const fSheet = { name: '发放表', cols: [6, 12, 14, 14, 16, 16, 20], cells: fCells };
+    const fNeed = names.length;
+    if (fNeed > fTplRows) insertRows(fws, fTotalRow, fNeed - fTplRows);
+    const fTotalNew = findRow(fws, ['合计']);
 
-    return { buf: buildWorkbook([gSheet, fSheet]), people, wkSum, weSum, hoSum, subT: Math.round(subT * 100) / 100 };
+    let wkT = 0, weT = 0, hoT = 0, subT = 0;
+    const fFinal = Math.max(fNeed, fTplRows);
+    for (let i = 0; i < fFinal; i++) {
+      const r = fDataStart + i;
+      if (i < fNeed) {
+        const p = people[names[i]];
+        setCell(fws, r, 0, i + 1, fColStyle[0], 'n');
+        setCell(fws, r, 1, p.name, fColStyle[1]);
+        setCell(fws, r, 2, p.wk, fColStyle[2], 'n');
+        setCell(fws, r, 3, p.we, fColStyle[3], 'n');
+        setCell(fws, r, 4, p.ho, fColStyle[4], 'n');
+        setCell(fws, r, 5, Math.round(p.sub * 100) / 100, fColStyle[5], 'n');
+        setCell(fws, r, 6, '', fColStyle[6]);
+        wkT += p.wk; weT += p.we; hoT += p.ho; subT += p.sub;
+      } else {
+        for (let c = 0; c < 7; c++) setCell(fws, r, c, '', fColStyle[c]);
+      }
+    }
+    setCell(fws, fTotalNew, 0, '合计', fColStyle[0]);
+    setCell(fws, fTotalNew, 2, wkT, fColStyle[2], 'n');
+    setCell(fws, fTotalNew, 3, weT, fColStyle[3], 'n');
+    setCell(fws, fTotalNew, 4, hoT, fColStyle[4], 'n');
+    setCell(fws, fTotalNew, 5, Math.round(subT * 100) / 100, fColStyle[5], 'n');
+    // 标题与日期
+    setCell(fws, 0, 0, `${ymLabel}珠海高新区合同制职员加班补贴发放表`, colStyle(fws, 0, 0, 0));
+    setCell(fws, 2, 0, `填报单位：${ctx.unit}`, colStyle(fws, 0, 2, 2));
+    setCell(fws, 2, 5, `时间：${ctx.timeStr}`, colStyle(fws, 5, 2, 2));
+
+    const buf = X.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
+    return { buf: buf, subT: Math.round(subT * 100) / 100, wkSum, weSum, hoSum, gFinal, fFinal };
   }
 
   // 浏览器端下载
@@ -302,5 +215,5 @@ ${sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.open
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  return { crc32, zip, entrySubsidy, buildWorkbook, buildMonthWorkbook, downloadXlsx };
+  return { entrySubsidy, effHours, fillTemplate, downloadXlsx };
 });
