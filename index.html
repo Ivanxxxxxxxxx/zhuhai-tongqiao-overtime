@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>珠海高新区统侨科 · 加班统计与补贴核算</title>
+<title>珠海高新区加班统计与补贴核算</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   :root {
@@ -102,12 +102,12 @@
 <div id="loginScreen" class="screen">
   <div class="login-wrap">
     <div class="login-card">
-      <h1>统侨科加班统计</h1>
+      <h1>加班统计与补贴核算</h1>
       <div class="sub">本机离线使用 · 请先登录个人信息</div>
       <label for="loginName">姓名 *</label>
-      <input id="loginName" placeholder="如：徐梦华" autocomplete="name">
-      <label for="loginDept">部门</label>
-      <input id="loginDept" value="统战" placeholder="如：统战">
+      <input id="loginName" placeholder="请输入姓名" autocomplete="name">
+      <label for="loginDept">部门 *</label>
+      <input id="loginDept" value="统战科" placeholder="如：统战科">
       <button class="btn-primary" id="btnLogin">进入</button>
       <div class="tip">数据仅保存在本机浏览器，按登录人隔离。<br>同一姓名即同一账号，可切换不同人分别记录。</div>
     </div>
@@ -122,8 +122,8 @@
       <div class="spacer"></div>
       <button class="btn-ghost btn-sm" id="btnLogout">退出 / 切换</button>
     </div>
-    <h1 class="title">珠海高新区统侨科 · 加班统计与补贴核算</h1>
-    <div class="sub">离线网页应用 · 数据保存在本机浏览器 · 可导出 Excel（公示表 + 发放表，严格按模板）</div>
+    <h1 class="title" id="appTitle">珠海高新区加班统计与补贴核算</h1>
+    <div class="sub">离线网页应用 · 数据保存在本机浏览器 · 可导入/导出 Excel（按统侨模板）</div>
 
     <!-- 统计设置 -->
     <div class="card">
@@ -131,11 +131,8 @@
       <div class="form-grid">
         <div class="field"><label>填报单位</label><input id="setUnit" value="高新区党群工作部"></div>
         <div class="field"><label>统计月份</label><input id="setMonth" type="month" value=""></div>
-        <div class="field"><label>公示时间起</label><input id="setPubStart" placeholder="2026年8月1日"></div>
-        <div class="field"><label>公示时间止</label><input id="setPubEnd" placeholder="2026年8月5日"></div>
-        <div class="field"><label>制表日期</label><input id="setMakeDate" placeholder="2026年8月31日"></div>
       </div>
-      <div class="tip">「统计月份」决定当前显示的加班记录与导出的表格。</div>
+      <div class="tip">「统计月份」决定当前显示的加班记录与导出的表格；公示时间、制表日期在导出时自动填当天。</div>
     </div>
 
     <!-- 录入 -->
@@ -183,7 +180,7 @@
     <div class="card">
       <h2>补贴计算规则</h2>
       <div class="rule">
-        <b>工作日加班</b>（不足1小时不计，满1小时按整段时长）：15元/小时，当天补贴最高 <b>80元</b>；<br>
+        <b>工作日加班</b>（不满1小时不计，满1小时后按小时向上取整：1.1小时按2小时算）：15元/小时，当天补贴最高 <b>80元</b>；<br>
         <b>双休日加班</b>：20元/小时，当天补贴最高 <b>160元</b>；<br>
         <b>法定节假日加班</b>：30元/小时，当天补贴最高 <b>240元</b>。<br>
         <span class="muted">注：“当天补贴最高”按自然日封顶；同一天同一类型记一条，跨类型分别计。规则与模板发放表样本（徐梦华 工作日7h、双休日5h、补贴205元）完全吻合。</span>
@@ -192,21 +189,21 @@
 
     <!-- 操作 -->
     <div class="card">
-      <h2>导出与备份</h2>
+      <h2>导入 / 导出 Excel</h2>
       <div class="btn-row">
         <button class="btn-primary" id="btnExport">导出 Excel（公示表 + 发放表）</button>
-        <button class="btn-ghost" id="btnExportJson">导出数据备份(JSON)</button>
-        <button class="btn-ghost" id="btnImportJson">导入数据备份(JSON)</button>
+        <button class="btn-ghost" id="btnImportXlsx">导入 Excel（按模板）</button>
         <button class="btn-danger" id="btnClearAll">清空本人全部数据</button>
-        <input type="file" id="fileImport" accept="application/json" style="display:none">
+        <input type="file" id="fileImportXls" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none">
       </div>
-      <div class="tip">Excel 按模板生成：<b>公示表</b>（逐条记录）与 <b>发放表</b>（按人汇总补贴），可直接打印/上报。数据仅存本机浏览器；换电脑或清缓存前请先“导出数据备份”。</div>
+      <div class="tip">导出：严格按统侨模板生成 <b>公示表</b>（逐条记录）与 <b>发放表</b>（按人汇总补贴）。导入：选择统侨模板（含“公示表”工作表）即可自动识别并录入相应信息；同名同月数据将覆盖更新，不影响他人数据。</div>
     </div>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
 <script src="xlsx.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
