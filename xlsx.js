@@ -1,8 +1,9 @@
 /* 统侨科加班统计 — 导出组件
- * 方案：直接基于内置的「统侨模板」底座（vendor/template.js 提供的原 .xls），
- *        把当月数据逐格填入对应位置，再另存为 .xlsx。
- *        —— 不自行重建表格、不自行添加合并，彻底避免表头跨列/合并错位。
- * 依赖：window.XLSX（vendor/xlsx.full.min.js 的 SheetJS）
+ * 方案：基于 ExcelJS 读取内置「统侨模板」底座（vendor/template.js 的原 .xlsx），
+ *        把当月数据逐格填入对应位置，再写回 .xlsx。
+ *        ExcelJS 读/写均完整保留母版边框、字体、列宽、合并、日期/时间格式，
+ *        彻底避免 SheetJS 社区版写不出边框导致的“排版错乱”。
+ * 依赖：window.ExcelJS（vendor/exceljs.min.js）
  * 浏览器端：window.XLSXGen；Node 端：module.exports
  */
 (function (root, factory) {
@@ -15,151 +16,153 @@
   // 工作日：15元/小时，封顶80元/天；双休日：20元/小时，封顶160元/天；法定节假日：30元/小时，封顶240元/天
   const RATES = { weekday: 15, weekend: 20, holiday: 30 };
   const CAPS = { weekday: 80, weekend: 160, holiday: 240 };
-  function effHours(hours) { return hours < 1 ? 0 : Math.ceil(hours); }
+  function effHours(h) { return h < 1 ? 0 : Math.ceil(h); }
   function entrySubsidy(type, hours) {
     const h = effHours(hours);
     if (h <= 0) return 0;
     return Math.min(h * RATES[type], CAPS[type]);
   }
+  function effInt(h) { return effHours(h); }
 
-  function XLSX() { return (typeof window !== 'undefined' && window.XLSX) || (typeof global !== 'undefined' && global.window && global.window.XLSX); }
+  // "YYYY-MM-DD" -> Date（按本地0点）；"HH:MM" -> Date（1899-12-30 基准，Excel 时间小数）
+  function toDateObj(s) {
+    if (!s) return null;
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s));
+    if (!m) return null;
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+  function toTimeObj(s) {
+    if (!s) return null;
+    const m = /^(\d{1,2}):(\d{2})/.exec(String(s));
+    if (!m) return null;
+    return new Date(1899, 11, 30, Number(m[1]), Number(m[2]), 0);
+  }
 
-  // 在某个 sheet 中找「同时含所有关键词」的行（0-based 行号）
-  function findRow(ws, keywords) {
-    const XU = XLSX().utils;
-    const range = XU.decode_range(ws['!ref']);
-    for (let r = range.s.r; r <= range.e.r; r++) {
+  // ===== 行列工具 =====
+  function colL(n) { let s = ''; n = Number(n); while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; }
+  function colLetterToNum(l) { let n = 0; for (const ch of String(l)) n = n * 26 + (ch.charCodeAt(0) - 64); return n; }
+  function refRow(ref) { const m = /^([A-Z]+)(\d+)$/.exec(ref); return m ? +m[2] : 0; }
+  function refCol(ref) { const m = /^([A-Z]+)(\d+)$/.exec(ref); return m ? colLetterToNum(m[1]) : 0; }
+
+  // 找含全部关键词的行（1-based 行号）
+  function findRow(ws, kws) {
+    let f = -1;
+    ws.eachRow((row, rn) => {
+      if (f >= 0) return;
       const vals = [];
-      for (let c = range.s.c; c <= range.e.c; c++) {
-        const cell = ws[XU.encode_cell({ r, c })];
-        if (cell && cell.v != null) vals.push(String(cell.v));
-      }
-      const joined = vals.join(' ');
-      if (keywords.every(k => joined.indexOf(k) >= 0)) return r;
-    }
-    return -1;
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        if (cell.value != null && cell.value !== '') vals.push(String(cell.value));
+      });
+      const j = vals.join(' ');
+      if (kws.every(k => j.indexOf(k) >= 0)) f = rn;
+    });
+    return f;
   }
-  // 取某列在数据区的首个样式（s），用于写入新行时沿用边框/字体
-  function colStyle(ws, col, r0, r1) {
-    const XU = XLSX().utils;
-    for (let r = r0; r <= r1; r++) {
-      const cell = ws[XU.encode_cell({ r, c: col })];
-      if (cell && cell.s != null) return cell.s;
-    }
-    return undefined;
+
+  // 合并区域随插入行整体下移
+  function shiftMerges(ws, beforeRow1, count) {
+    const merges = ws.model.merges || [];
+    ws.model.merges = merges.map(m => {
+      const parts = m.split(':');
+      const a = parts[0], b = parts[1] || a;
+      const ra = refRow(a), ca = refCol(a), rb = refRow(b), cb = refCol(b);
+      const na = ra >= beforeRow1 ? ra + count : ra;
+      const nb = rb >= beforeRow1 ? rb + count : rb;
+      if (na !== ra || nb !== rb) return colL(ca) + na + ':' + colL(cb) + nb;
+      return m;
+    });
   }
-  function setCell(ws, r, c, value, style, type) {
-    const XU = XLSX().utils;
-    const addr = XU.encode_cell({ r, c });
-    if (value === '' || value == null) {
-      ws[addr] = { t: 's', v: '' };
-    } else {
-      ws[addr] = { t: type || (typeof value === 'number' ? 'n' : 's'), v: value };
-    }
-    if (style != null) ws[addr].s = style;
-  }
-  // 把 beforeRow（0-based，含）及之后的所有行整体下移 count 行，并处理合并区
-  function insertRows(ws, beforeRow, count) {
+
+  // 在 beforeRow1（1-based）之前插入 count 行：整段下移、复制上溯行样式、合并下移
+  async function excelInsertRows(ws, beforeRow1, count) {
     if (count <= 0) return;
-    const XU = XLSX().utils;
-    const moves = [];
-    for (const addr in ws) {
-      if (addr[0] === '!') continue;
-      const cc = XU.decode_cell(addr);
-      if (cc.r >= beforeRow) moves.push(addr);
+    const last = ws.rowCount;
+    // 整段下移到 beforeRow1+count..last+count（不清空原行，避免合并 master 行被 ExcelJS 移除）
+    for (let r = last; r >= beforeRow1; r--) {
+      const src = ws.getRow(r);
+      const dst = ws.getRow(r + count);
+      src.eachCell({ includeEmpty: true }, (cell, col) => {
+        const d = dst.getCell(col);
+        d.value = cell.value;
+        d.style = Object.assign({}, cell.style);
+      });
     }
-    moves.sort((a, b) => XU.decode_cell(b).r - XU.decode_cell(a).r);
-    for (const addr of moves) {
-      const cc = XU.decode_cell(addr);
-      const cell = ws[addr];
-      delete ws[addr];
-      ws[XU.encode_cell({ r: cc.r + count, c: cc.c })] = cell;
+    // 给新插入的空行补边框样式（从数据区末行复制）
+    const styleSrc = ws.getRow(beforeRow1 - 1);
+    for (let r = beforeRow1; r < beforeRow1 + count; r++) {
+      const dst = ws.getRow(r);
+      styleSrc.eachCell({ includeEmpty: true }, (cell, col) => {
+        dst.getCell(col).style = Object.assign({}, cell.style);
+      });
     }
-    const range = XU.decode_range(ws['!ref']);
-    range.e.r += count;
-    ws['!ref'] = XU.encode_range(range);
-    if (ws['!merges']) {
-      ws['!merges'] = ws['!merges'].map(m => ({
-        s: { r: m.s.r >= beforeRow ? m.s.r + count : m.s.r, c: m.s.c },
-        e: { r: m.e.r >= beforeRow ? m.e.r + count : m.e.r, c: m.e.c },
-      }));
-    }
+    shiftMerges(ws, beforeRow1, count);
   }
 
-  // 把「向上取整后的整数小时」写入模板三类时长列
-  function effInt(h) { const v = effHours(h); return v; }
-
-  /* 核心：基于模板底座填数据
+  /* 核心：基于模板底座填数据（async，依赖 ExcelJS）
    * ctx: {year, month, unit, pubStart, pubEnd, makeDate, timeStr}
    * entries: 当月记录数组 [{date,type,name,dept,hours,start,end,reason}]
    * tplBuf: 模板文件 ArrayBuffer/Uint8Array
-   * 返回 { buf: Uint8Array(xlsx), subT }
    */
-  function fillTemplate(ctx, entries, tplBuf) {
-    const X = XLSX(); const XU = X.utils;
-    const wb = X.read(tplBuf, { type: 'array', cellDates: true, cellStyles: true });
+  async function fillTemplate(ctx, entries, tplBuf) {
+    const ExcelJS = (typeof window !== 'undefined' && window.ExcelJS) ||
+      (typeof global !== 'undefined' && global.window && global.window.ExcelJS) ||
+      (typeof require !== 'undefined' ? require('exceljs') : null);
+    if (!ExcelJS) throw new Error('ExcelJS 未加载');
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(tplBuf);
     const ymLabel = `${ctx.year}年${ctx.month}月`;
 
-    const gName = wb.SheetNames.find(n => String(n).indexOf('公示') >= 0) || wb.SheetNames[0];
-    const fName = wb.SheetNames.find(n => String(n).indexOf('发放') >= 0) || wb.SheetNames[1] || wb.SheetNames[0];
-    const gws = wb.Sheets[gName];
-    const fws = wb.Sheets[fName];
-
     // ===================== 公示表 =====================
+    const gwsName = wb.worksheets.find(w => String(w.name).indexOf('公示') >= 0).name;
+    const gws = wb.getWorksheet(gwsName);
     const gHead = findRow(gws, ['姓名', '加班日期']);
-    const gSub = findRow(gws, ['工作日']) >= 0 ? findRow(gws, ['工作日']) : gHead + 1;
+    const gSub = findRow(gws, ['工作日']) || gHead + 1;
     const gDataStart = gSub + 1;
-    const gTotalRow = findRow(gws, ['小计']);
-    const gTplRows = gTotalRow - gDataStart;
-    const gColStyle = [];
-    for (let c = 0; c < 10; c++) gColStyle[c] = colStyle(gws, c, gDataStart, gTotalRow - 1);
-
+    const gTotal = findRow(gws, ['小计']);
+    const gTplRows = gTotal - gDataStart;
     const gNeed = entries.length;
-    if (gNeed > gTplRows) insertRows(gws, gTotalRow, gNeed - gTplRows);
-    const gTotalNew = findRow(gws, ['小计']); // 下移后重新定位
-
+    const gCount = gNeed > gTplRows ? gNeed - gTplRows : 0;
+    if (gCount > 0) await excelInsertRows(gws, gTotal, gCount);
+    const gTotalNew = gTotal + gCount;
     let wkSum = 0, weSum = 0, hoSum = 0;
     const gFinal = Math.max(gNeed, gTplRows);
     for (let i = 0; i < gFinal; i++) {
-      const r = gDataStart + i;
+      const row = gws.getRow(gDataStart + i);
       if (i < gNeed) {
         const e = entries[i];
-        const col = e.type === 'weekday' ? 4 : e.type === 'weekend' ? 5 : 6;
         const h = effInt(e.hours);
-        setCell(gws, r, 0, i + 1, gColStyle[0], 'n');
-        setCell(gws, r, 1, e.dept || '', gColStyle[1]);
-        setCell(gws, r, 2, e.name, gColStyle[2]);
-        setCell(gws, r, 3, e.date, gColStyle[3]);
-        setCell(gws, r, 4, e.type === 'weekday' ? h : '', gColStyle[4], 'n');
-        setCell(gws, r, 5, e.type === 'weekend' ? h : '', gColStyle[5], 'n');
-        setCell(gws, r, 6, e.type === 'holiday' ? h : '', gColStyle[6], 'n');
-        setCell(gws, r, 7, e.start || '', gColStyle[7]);
-        setCell(gws, r, 8, e.end || '', gColStyle[8]);
-        setCell(gws, r, 9, e.reason || '', gColStyle[9]);
+        row.getCell(1).value = i + 1;
+        row.getCell(2).value = e.dept || '';
+        row.getCell(3).value = e.name;
+        const dc = row.getCell(4); const dObj = toDateObj(e.date); if (dObj) { dc.value = dObj; dc.numFmt = 'yyyy-mm-dd'; }
+        row.getCell(5).value = e.type === 'weekday' ? h : '';
+        row.getCell(6).value = e.type === 'weekend' ? h : '';
+        row.getCell(7).value = e.type === 'holiday' ? h : '';
+        const sc = row.getCell(8); const sObj = toTimeObj(e.start); if (sObj) { sc.value = sObj; sc.numFmt = 'h:mm'; }
+        const ec = row.getCell(9); const eObj = toTimeObj(e.end); if (eObj) { ec.value = eObj; ec.numFmt = 'h:mm'; }
+        row.getCell(10).value = e.reason || '';
         if (e.type === 'weekday') wkSum += h; else if (e.type === 'weekend') weSum += h; else hoSum += h;
       } else {
-        for (let c = 0; c < 10; c++) setCell(gws, r, c, '', gColStyle[c]);
+        for (let c = 1; c <= 10; c++) row.getCell(c).value = '';
       }
     }
-    setCell(gws, gTotalNew, 1, '小计', gColStyle[1]);
-    setCell(gws, gTotalNew, 4, wkSum, gColStyle[4], 'n');
-    setCell(gws, gTotalNew, 5, weSum, gColStyle[5], 'n');
-    setCell(gws, gTotalNew, 6, hoSum, gColStyle[6], 'n');
-    // 标题与日期
-    setCell(gws, 0, 0, `珠海高新区合同制职员加班情况公示表（${ymLabel}）`, colStyle(gws, 0, 0, 0));
-    setCell(gws, 2, 0, `填报单位：${ctx.unit}`, colStyle(gws, 0, 2, 2));
-    setCell(gws, 2, 5, `公示时间：${ctx.pubStart}至${ctx.pubEnd}`, colStyle(gws, 5, 2, 2));
-    setCell(gws, 2, 9, `制表日期：${ctx.makeDate}`, colStyle(gws, 9, 2, 2));
+    gws.getRow(gTotalNew).getCell(2).value = '小计';
+    gws.getRow(gTotalNew).getCell(5).value = wkSum;
+    gws.getRow(gTotalNew).getCell(6).value = weSum;
+    gws.getRow(gTotalNew).getCell(7).value = hoSum;
+    gws.getRow(1).getCell(1).value = `珠海高新区合同制职员加班情况公示表（${ymLabel}）`;
+    gws.getRow(3).getCell(1).value = `填报单位：${ctx.unit}`;
+    gws.getRow(3).getCell(6).value = `公示时间：${ctx.pubStart}至${ctx.pubEnd}`;
+    gws.getRow(3).getCell(10).value = `制表日期：${ctx.makeDate}`;
 
     // ===================== 发放表（按人汇总）=====================
+    const fwsName = wb.worksheets.find(w => String(w.name).indexOf('发放') >= 0).name;
+    const fws = wb.getWorksheet(fwsName);
     const fHead = findRow(fws, ['序号', '姓名', '累计加班时间']) >= 0 ? findRow(fws, ['序号', '姓名', '累计加班时间']) : findRow(fws, ['姓名']);
-    const fSub = findRow(fws, ['工作日加班']) >= 0 ? findRow(fws, ['工作日加班']) : fHead + 1;
+    const fSub = findRow(fws, ['工作日加班']) || fHead + 1;
     const fDataStart = fSub + 1;
-    const fTotalRow = findRow(fws, ['合计']);
-    const fTplRows = fTotalRow - fDataStart;
-    const fColStyle = [];
-    for (let c = 0; c < 7; c++) fColStyle[c] = colStyle(fws, c, fDataStart, fTotalRow - 1);
-
+    const fTotal = findRow(fws, ['合计']);
+    const fTplRows = fTotal - fDataStart;
     const people = {};
     for (const e of entries) {
       const p = people[e.name] = people[e.name] || { name: e.name, wk: 0, we: 0, ho: 0, sub: 0 };
@@ -169,39 +172,38 @@
     }
     const names = Object.keys(people);
     const fNeed = names.length;
-    if (fNeed > fTplRows) insertRows(fws, fTotalRow, fNeed - fTplRows);
-    const fTotalNew = findRow(fws, ['合计']);
-
+    const fCount = fNeed > fTplRows ? fNeed - fTplRows : 0;
+    if (fCount > 0) await excelInsertRows(fws, fTotal, fCount);
+    const fTotalNew = fTotal + fCount;
     let wkT = 0, weT = 0, hoT = 0, subT = 0;
     const fFinal = Math.max(fNeed, fTplRows);
     for (let i = 0; i < fFinal; i++) {
-      const r = fDataStart + i;
+      const row = fws.getRow(fDataStart + i);
       if (i < fNeed) {
         const p = people[names[i]];
-        setCell(fws, r, 0, i + 1, fColStyle[0], 'n');
-        setCell(fws, r, 1, p.name, fColStyle[1]);
-        setCell(fws, r, 2, p.wk, fColStyle[2], 'n');
-        setCell(fws, r, 3, p.we, fColStyle[3], 'n');
-        setCell(fws, r, 4, p.ho, fColStyle[4], 'n');
-        setCell(fws, r, 5, Math.round(p.sub * 100) / 100, fColStyle[5], 'n');
-        setCell(fws, r, 6, '', fColStyle[6]);
+        row.getCell(1).value = i + 1;
+        row.getCell(2).value = p.name;
+        row.getCell(3).value = p.wk;
+        row.getCell(4).value = p.we;
+        row.getCell(5).value = p.ho;
+        row.getCell(6).value = Math.round(p.sub * 100) / 100;
+        row.getCell(7).value = '';
         wkT += p.wk; weT += p.we; hoT += p.ho; subT += p.sub;
       } else {
-        for (let c = 0; c < 7; c++) setCell(fws, r, c, '', fColStyle[c]);
+        for (let c = 1; c <= 7; c++) row.getCell(c).value = '';
       }
     }
-    setCell(fws, fTotalNew, 0, '合计', fColStyle[0]);
-    setCell(fws, fTotalNew, 2, wkT, fColStyle[2], 'n');
-    setCell(fws, fTotalNew, 3, weT, fColStyle[3], 'n');
-    setCell(fws, fTotalNew, 4, hoT, fColStyle[4], 'n');
-    setCell(fws, fTotalNew, 5, Math.round(subT * 100) / 100, fColStyle[5], 'n');
-    // 标题与日期
-    setCell(fws, 0, 0, `${ymLabel}珠海高新区合同制职员加班补贴发放表`, colStyle(fws, 0, 0, 0));
-    setCell(fws, 2, 0, `填报单位：${ctx.unit}`, colStyle(fws, 0, 2, 2));
-    setCell(fws, 2, 5, `时间：${ctx.timeStr}`, colStyle(fws, 5, 2, 2));
+    fws.getRow(fTotalNew).getCell(1).value = '合计';
+    fws.getRow(fTotalNew).getCell(3).value = wkT;
+    fws.getRow(fTotalNew).getCell(4).value = weT;
+    fws.getRow(fTotalNew).getCell(5).value = hoT;
+    fws.getRow(fTotalNew).getCell(6).value = Math.round(subT * 100) / 100;
+    fws.getRow(1).getCell(1).value = `${ymLabel}珠海高新区合同制职员加班补贴发放表`;
+    fws.getRow(3).getCell(1).value = `填报单位：${ctx.unit}`;
+    fws.getRow(3).getCell(6).value = `时间：${ctx.timeStr}`;
 
-    const buf = X.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
-    return { buf: buf, subT: Math.round(subT * 100) / 100, wkSum, weSum, hoSum, gFinal, fFinal };
+    const buf = await wb.xlsx.writeBuffer();
+    return { buf, subT: Math.round(subT * 100) / 100, wkSum, weSum, hoSum, gFinal, fFinal };
   }
 
   // 浏览器端下载
