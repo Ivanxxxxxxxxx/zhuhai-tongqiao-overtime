@@ -1,9 +1,11 @@
-/* 统侨科加班统计 — 前端逻辑（依赖 xlsx.js 暴露的 window.XLSXGen）
- * v2：个人登录（按姓名隔离数据）+ 起止时间自动换算时长 + 移动端响应式
+/* 统侨科加班统计 — 前端逻辑（依赖 xlsx.js 暴露的 window.XLSXGen 与 vendor/xlsx.full.min.js 的 window.XLSX）
+ * v3：个人登录(部门默认统战科、标题随科室) + 起止时间自动换算时长 + 导出/导入 Excel(按模板) + 移动端响应式
+ * 补贴规则：不满1小时不计，满1小时后按小时向上取整；工作日15(封顶80)/双休日20(封顶160)/法定30(封顶240)
  */
 (function () {
   'use strict';
   const G = window.XLSXGen;
+  const XLSX = window.XLSX; // SheetJS，用于导入读取
   const LS_CURRENT = 'tq_current_user';
   const TYPE_LABEL = { weekday: '工作日', weekend: '双休日', holiday: '法定节假日' };
 
@@ -11,9 +13,9 @@
   function userKey(name) { return 'tq_entries_' + encodeURIComponent(name); }
   function settingsKey(name) { return 'tq_settings_' + encodeURIComponent(name); }
 
-  let currentUser = null;      // {name, dept}
-  let entries = [];            // 当前用户的记录
-  let settings = {};           // 当前用户的设置
+  let currentUser = null;
+  let entries = [];
+  let settings = {};
   let editingId = null;
 
   function loadUser(name) {
@@ -36,6 +38,32 @@
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
   function fmt(n) { return (Math.round(n * 100) / 100).toString(); }
+  function num(v) { const n = Number(v); return isFinite(n) ? n : 0; }
+
+  // Excel 日期序列号 / JS Date → YYYY-MM-DD（SheetJS 默认把日期格转成 JS Date 对象）
+  function excelSerialToDate(serial) {
+    if (serial == null || serial === '') return '';
+    if (serial instanceof Date) { const d = serial; return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+    const s = Number(serial);
+    if (!isFinite(s)) {
+      const d = new Date(String(serial));
+      return isNaN(d) ? '' : d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    }
+    const d = new Date((s - 25569) * 86400000);
+    if (isNaN(d)) return '';
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+  // Excel 时间（小数 0.5833=14:00，或 SheetJS 转成的 Date 对象）→ HH:MM；也兼容 "14:00" 文本
+  function fracTime(v) {
+    if (v == null || v === '') return '';
+    if (v instanceof Date) return pad(v.getHours()) + ':' + pad(v.getMinutes());
+    const s = String(v).trim();
+    if (/^\d{1,2}:\d{2}/.test(s)) return s.slice(0, 5);
+    const f = Number(v);
+    if (!isFinite(f) || f <= 0 || f >= 1) return '';
+    const totalMin = Math.round(f * 24 * 60);
+    return pad(Math.floor(totalMin / 60)) + ':' + pad(totalMin % 60);
+  }
 
   // 起止时间 → 小时（支持跨天：结束<=开始视为跨过午夜）
   function calcHours(start, end) {
@@ -43,7 +71,7 @@
     const [sh, sm] = start.split(':').map(Number);
     const [eh, em] = end.split(':').map(Number);
     let mins = (eh * 60 + em) - (sh * 60 + sm);
-    if (mins < 0) mins += 24 * 60; // 仅结束早于开始时按跨天处理；相等则为 0（无效时长）
+    if (mins < 0) mins += 24 * 60;
     return Math.round((mins / 60) * 100) / 100;
   }
   function updateHoursPreview() {
@@ -52,21 +80,15 @@
     return h;
   }
 
-  // ---------- 设置 ----------
+  // ---------- 设置（仅保留填报单位 + 统计月份）----------
   function applySettingsToUI() {
     if (settings.unit) $('setUnit').value = settings.unit;
     if (settings.month) $('setMonth').value = settings.month;
-    if (settings.pubStart) $('setPubStart').value = settings.pubStart;
-    if (settings.pubEnd) $('setPubEnd').value = settings.pubEnd;
-    if (settings.makeDate) $('setMakeDate').value = settings.makeDate;
   }
   function collectSettings() {
     const s = {
       unit: $('setUnit').value.trim() || '高新区党群工作部',
       month: $('setMonth').value || thisMonth(),
-      pubStart: $('setPubStart').value.trim(),
-      pubEnd: $('setPubEnd').value.trim(),
-      makeDate: $('setMakeDate').value.trim() || todayCN(),
     };
     settings = s; saveSettings(); return s;
   }
@@ -79,6 +101,7 @@
     if (!settings.month) { settings.month = thisMonth(); saveSettings(); }
     $('whoName').textContent = user.name;
     $('whoDept').textContent = user.dept ? '（' + user.dept + '）' : '';
+    $('appTitle').textContent = '珠海高新区' + (user.dept || '') + '加班统计与补贴核算';
     $('loginScreen').hidden = true;
     $('appScreen').hidden = false;
     applySettingsToUI();
@@ -90,7 +113,7 @@
     localStorage.removeItem(LS_CURRENT);
     $('appScreen').hidden = true;
     $('loginScreen').hidden = false;
-    $('loginName').value = ''; $('loginDept').value = '统战';
+    $('loginName').value = ''; $('loginDept').value = '统战科';
     $('loginName').focus();
   }
   function doLogin() {
@@ -111,7 +134,7 @@
     $('monthLabel').textContent = m.replace('-', '年') + '月';
     const list = currentMonthEntries();
     const box = $('entryTable');
-    if (!list.length) { box.innerHTML = '<div class="empty">本月暂无记录，请在上方录入。</div>'; return; }
+    if (!list.length) { box.innerHTML = '<div class="empty">本月暂无记录，请在上方录入或从模板导入。</div>'; return; }
     let html = '<table><thead><tr><th>序号</th><th>姓名</th><th>部门</th><th>日期</th><th>类型</th><th>时长(h)</th><th>起</th><th>止</th><th>事由</th><th>操作</th></tr></thead><tbody>';
     list.forEach((e, i) => {
       html += `<tr>
@@ -210,47 +233,94 @@
     saveEntries(); renderAll(); toast('已删除');
   }
 
-  // ---------- 导出 ----------
+  // ---------- 导出 Excel（按模板）----------
   function buildCtx() {
     const s = collectSettings();
     const [y, m] = s.month.split('-').map(Number);
-    return { year: y, month: m, unit: s.unit, pubStart: s.pubStart || '', pubEnd: s.pubEnd || '', makeDate: s.makeDate, timeStr: s.makeDate };
+    const today = todayCN();
+    return { year: y, month: m, unit: s.unit, pubStart: today, pubEnd: today, makeDate: today, timeStr: today };
   }
   function exportXlsx() {
     collectSettings();
     const ctx = buildCtx();
     const list = currentMonthEntries();
+    if (!list.length) { toast('本月暂无记录，无法导出'); return; }
     const ym = ctx.year + '年' + ctx.month + '月';
     const res = G.buildMonthWorkbook(ctx, list);
     G.downloadXlsx(res.buf, `统侨加班_${ctx.year}-${pad(ctx.month)}月_公示表+发放表.xlsx`);
     toast(`已导出 ${ym} 表格（${list.length} 条记录）`);
   }
-  function exportJson() {
-    const data = { version: 2, user: currentUser, exportedAt: new Date().toISOString(), settings, entries };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `统侨加班_${currentUser.name}_${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast('已导出数据备份');
+
+  // ---------- 导入 Excel（按统侨模板，自动识别公示表）----------
+  function mkEntry(name, dept, date, type, hours, start, end, reason) {
+    return { id: uid(), name, dept, date, type, hours: Math.round(hours * 100) / 100, start, end, reason };
   }
-  function importJson(file) {
+  // 解析公示表二维数组 → entries[]
+  function parseGongshiRows(rows) {
+    let headRow = -1;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const joined = r.map(c => String(c)).join(' ');
+      if (joined.indexOf('姓名') >= 0 && joined.indexOf('加班日期') >= 0) { headRow = i; break; }
+    }
+    if (headRow < 0) return [];
+    const out = [];
+    for (let i = headRow + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      if (!r.length) continue;
+      const name = String(r[2] != null ? r[2] : '').trim();
+      if (!name) continue; // 跳过子表头/空行
+      const first = String(r[0] != null ? r[0] : '');
+      if (name === '小计' || name === '合计' || first.indexOf('制表') >= 0) break; // 到小计/制表人结束
+      const dept = String(r[1] != null ? r[1] : '').trim();
+      const date = excelSerialToDate(r[3]);
+      if (!date) continue;
+      const wk = num(r[4]), we = num(r[5]), ho = num(r[6]);
+      const start = fracTime(r[7]), end = fracTime(r[8]);
+      const reason = String(r[9] != null ? r[9] : '').trim();
+      if (wk > 0) out.push(mkEntry(name, dept, date, 'weekday', wk, start, end, reason));
+      if (we > 0) out.push(mkEntry(name, dept, date, 'weekend', we, start, end, reason));
+      if (ho > 0) out.push(mkEntry(name, dept, date, 'holiday', ho, start, end, reason));
+    }
+    return out;
+  }
+  // 按人+月覆盖式合并写入（幂等，不串月、不影响其他人）
+  function mergeImported(list) {
+    const monthsByName = {};
+    for (const e of list) {
+      const m = monthKey(e.date);
+      (monthsByName[e.name] = monthsByName[e.name] || new Set()).add(m);
+    }
+    for (const name of Object.keys(monthsByName)) {
+      const months = monthsByName[name];
+      let arr = [];
+      try { arr = JSON.parse(localStorage.getItem(userKey(name)) || '[]'); } catch (e) { arr = []; }
+      arr = arr.filter(x => !months.has(monthKey(x.date)));
+      arr = arr.concat(list.filter(e => e.name === name));
+      localStorage.setItem(userKey(name), JSON.stringify(arr));
+    }
+    if (currentUser && monthsByName[currentUser.name]) loadUser(currentUser.name);
+    return Object.keys(monthsByName).length;
+  }
+  function importXlsx(file) {
+    if (!XLSX) { alert('导入组件未加载，请刷新页面后重试'); return; }
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = (ev) => {
       try {
-        const data = JSON.parse(reader.result);
-        if (!Array.isArray(data.entries)) throw new Error('格式错误');
-        if (data.settings) { settings = data.settings; saveSettings(); }
-        const map = {};
-        entries.forEach(e => map[e.id] = e);
-        data.entries.forEach(e => map[e.id || uid()] = e);
-        entries = Object.values(map);
-        saveEntries(); renderAll();
-        toast(`已导入 ${data.entries.length} 条记录`);
-      } catch (e) { alert('导入失败：' + e.message); }
+        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        const wsName = wb.SheetNames.find(n => String(n).indexOf('公示') >= 0) || wb.SheetNames[0];
+        const ws = wb.Sheets[wsName];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+        const parsed = parseGongshiRows(rows);
+        if (!parsed.length) { alert('未在表格中识别到公示表加班记录，请确认文件为统侨模板（含“公示表”工作表）。'); return; }
+        const people = mergeImported(parsed);
+        toast(`已导入 ${parsed.length} 条记录（${people} 人）`);
+        renderAll();
+      } catch (err) {
+        alert('导入失败：' + (err && err.message ? err.message : err));
+      }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   }
 
   // ---------- 事件 ----------
@@ -263,11 +333,10 @@
   $('fStart').addEventListener('input', updateHoursPreview);
   $('fEnd').addEventListener('input', updateHoursPreview);
   $('setMonth').onchange = () => { collectSettings(); renderAll(); };
-  $('setUnit').onchange = $('setPubStart').onchange = $('setPubEnd').onchange = $('setMakeDate').onchange = collectSettings;
+  $('setUnit').onchange = collectSettings;
   $('btnExport').onclick = exportXlsx;
-  $('btnExportJson').onclick = exportJson;
-  $('btnImportJson').onclick = () => $('fileImport').click();
-  $('fileImport').onchange = (e) => { if (e.target.files[0]) importJson(e.target.files[0]); e.target.value = ''; };
+  $('btnImportXlsx').onclick = () => $('fileImportXls').click();
+  $('fileImportXls').onchange = (e) => { if (e.target.files[0]) importXlsx(e.target.files[0]); e.target.value = ''; };
   $('btnClearMonth').onclick = () => {
     const m = $('setMonth').value;
     if (!confirm(`确定清空 ${m} 本月所有记录？`)) return;
@@ -275,7 +344,7 @@
     saveEntries(); renderAll(); toast('已清空本月记录');
   };
   $('btnClearAll').onclick = () => {
-    if (!confirm('确定清空本人全部数据？此操作不可恢复，建议先导出备份。')) return;
+    if (!confirm('确定清空本人全部数据？此操作不可恢复。')) return;
     entries = []; saveEntries(); renderAll(); toast('已清空本人全部数据');
   };
 
