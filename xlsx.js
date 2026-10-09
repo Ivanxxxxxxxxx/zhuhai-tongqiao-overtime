@@ -73,29 +73,22 @@
     });
   }
 
-  // 在 beforeRow1（1-based）之前插入 count 行：整段下移、复制上溯行样式、合并下移
+  // 在 beforeRow1（1-based）之前插入 count 个空行：
+  //   - 用 ExcelJS 原生 insertRow 把其后内容整体下移（自动带样式，但【不】推移合并）
+  //   - 手动 shiftMerges 把合并区域随插入下移
+  //   - 给新插入的空行复制“数据区末行”样式（边框）以保版式
   async function excelInsertRows(ws, beforeRow1, count) {
     if (count <= 0) return;
-    const last = ws.rowCount;
-    // 整段下移到 beforeRow1+count..last+count（不清空原行，避免合并 master 行被 ExcelJS 移除）
-    for (let r = last; r >= beforeRow1; r--) {
-      const src = ws.getRow(r);
-      const dst = ws.getRow(r + count);
-      src.eachCell({ includeEmpty: true }, (cell, col) => {
-        const d = dst.getCell(col);
-        d.value = cell.value;
-        d.style = Object.assign({}, cell.style);
-      });
-    }
-    // 给新插入的空行补边框样式（从数据区末行复制）
-    const styleSrc = ws.getRow(beforeRow1 - 1);
+    for (let k = 0; k < count; k++) ws.insertRow(beforeRow1, []);
+    shiftMerges(ws, beforeRow1, count);
+    const styleSrc = ws.getRow(Math.min(beforeRow1 - 1, ws.rowCount));
+    if (!styleSrc) return;
     for (let r = beforeRow1; r < beforeRow1 + count; r++) {
       const dst = ws.getRow(r);
       styleSrc.eachCell({ includeEmpty: true }, (cell, col) => {
         dst.getCell(col).style = Object.assign({}, cell.style);
       });
     }
-    shiftMerges(ws, beforeRow1, count);
   }
 
   /* 核心：基于模板底座填数据（async，依赖 ExcelJS）
@@ -193,11 +186,16 @@
         for (let c = 1; c <= 7; c++) row.getCell(c).value = '';
       }
     }
+    // 母版“合计”行为合并 A:E，insertRow 会丢失该合并。
+    // 顺序：先解除合并 → 写入真实数值（A=合计、C/D/E=分项合计、F=总补贴）→ 再合并（与母版一致，隐藏的 C/D/E 存真实合计）
+    try { fws.unMergeCells('A' + fTotalNew + ':E' + fTotalNew); } catch (e) { /* 无合并则忽略 */ }
     fws.getRow(fTotalNew).getCell(1).value = '合计';
+    fws.getRow(fTotalNew).getCell(2).value = '';
     fws.getRow(fTotalNew).getCell(3).value = wkT;
     fws.getRow(fTotalNew).getCell(4).value = weT;
     fws.getRow(fTotalNew).getCell(5).value = hoT;
     fws.getRow(fTotalNew).getCell(6).value = Math.round(subT * 100) / 100;
+    try { fws.mergeCells('A' + fTotalNew + ':E' + fTotalNew); } catch (e) { /* 忽略 */ }
     fws.getRow(1).getCell(1).value = `${ymLabel}珠海高新区合同制职员加班补贴发放表`;
     fws.getRow(3).getCell(1).value = `填报单位：${ctx.unit}`;
     fws.getRow(3).getCell(6).value = `时间：${ctx.timeStr}`;
