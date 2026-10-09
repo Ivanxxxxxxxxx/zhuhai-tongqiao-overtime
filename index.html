@@ -43,10 +43,6 @@
   .field { display: flex; flex-direction: column; }
   label { font-size: 12.5px; color: #555; margin-bottom: 5px; }
   input, select, textarea { width: 100%; padding: 11px 10px; border: 1px solid #cfd6e0; border-radius: 9px; font-size: 15px; background: #fff; }
-  /* 24 小时制时间选择器（小时+分钟两个下拉，移动端滚轮划动，无上午/下午） */
-  .time-pick { display: flex; align-items: center; gap: 8px; }
-  .time-pick select { flex: 1; min-width: 0; text-align: center; font-variant-numeric: tabular-nums; }
-  .time-pick span { color: #555; font-weight: 600; }
   input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(47,111,237,.12); }
   textarea { resize: vertical; min-height: 42px; }
   input[readonly] { background: #f3f5f9; color: #555; }
@@ -84,19 +80,55 @@
   .toast.show { opacity: .95; }
   a.dl { color: var(--blue); cursor: pointer; }
 
-  /* ===== 移动端优化 ===== */
-  @media (max-width: 560px) {
+  /* ===== 移动端底部操作栏（仅窄屏显示）===== */
+  .mb-bar { display: none; }
+
+  /* ===== 移动端优化（重点）===== */
+  @media (max-width: 600px) {
     body { font-size: 14px; }
-    .wrap { padding: 12px 10px 56px; }
+    .wrap { padding: 10px 11px calc(118px + env(safe-area-inset-bottom)); }
     .form-grid { grid-template-columns: 1fr; }
-    .card { padding: 14px 12px; }
+    .card { padding: 14px 13px; margin-bottom: 12px; }
     h1.title { font-size: 18px; }
-    .card h2 { font-size: 15px; }
+    .card h2 { font-size: 15px; margin-bottom: 12px; }
+    .sub { font-size: 12.5px; margin-bottom: 12px; }
+    /* 输入框 16px，避免 iOS 聚焦自动放大；加大点按区域 */
+    input, select, textarea { font-size: 16px; padding: 12px 11px; }
     .btn-row { flex-direction: column; }
     .btn-row button { width: 100%; }
-    table { font-size: 12px; min-width: 520px; }
+    .topbar { position: sticky; top: 0; z-index: 50; background: var(--bg);
+      padding: 9px 2px; margin-bottom: 8px; box-shadow: 0 1px 0 rgba(0,0,0,.04); }
     .topbar .who { font-size: 13px; }
     .topbar .btn-sm { padding: 8px 12px; }
+
+    /* 表格 → 卡片式（每行为一张卡，字段名用 data-label 显示） */
+    .table-wrap { overflow: visible; }
+    table { min-width: 0; border: none; }
+    table, thead, tbody, tr, th, td { display: block; width: 100%; }
+    thead { display: none; }
+    tbody tr { background: #fff; border: 1px solid var(--line); border-radius: 11px;
+      margin-bottom: 11px; padding: 3px 2px; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+    tbody td { border: none; border-bottom: 1px solid #f1f3f7; border-radius: 0;
+      display: flex; justify-content: space-between; align-items: center; gap: 14px;
+      text-align: right; padding: 9px 12px; white-space: normal; }
+    tbody td:last-child { border-bottom: none; }
+    tbody td::before { content: attr(data-label); flex-shrink: 0; text-align: left;
+      font-size: 12px; color: #8a93a3; font-weight: 600; }
+    tbody td.name, tbody td.reason { word-break: break-word; }
+    tbody td.reason { color: #444; }
+    tbody td a.dl { display: inline-block; padding: 6px 14px; margin-left: 6px;
+      border: 1px solid var(--line); border-radius: 8px; background: #f5f8fc; font-size: 13px; }
+    /* 合计行高亮 */
+    tr.summary-total td { background: #fff8e6; border-radius: 11px; }
+    tr.summary-total td::before { color: var(--warn); }
+
+    /* 底部固定操作栏：单手可达 */
+    .mb-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 90; display: flex; gap: 10px;
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: #fff;
+      border-top: 1px solid var(--line); box-shadow: 0 -3px 14px rgba(0,0,0,.08); }
+    .mb-bar button { flex: 1; }
+    /* toast 上移到操作栏之上 */
+    .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
   }
 </style>
 </head>
@@ -203,6 +235,11 @@
       </div>
       <div class="tip">导出：严格按统侨模板生成 <b>公示表</b>（逐条记录）与 <b>发放表</b>（按人汇总补贴）。导入：选择统侨模板（含“公示表”工作表）即可自动识别并录入相应信息；同名同月数据将覆盖更新，不影响他人数据。</div>
     </div>
+  </div>
+  <!-- 移动端底部操作栏（窄屏固定显示） -->
+  <div class="mb-bar">
+    <button class="btn-primary" id="mbAdd">＋ 添加记录</button>
+    <button class="btn-ghost" id="mbExport">导出本月</button>
   </div>
 </div>
 
