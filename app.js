@@ -118,14 +118,23 @@
     applySettingsToUI();
     renderAll();
   }
-  function logout() {
-    saveEntries(); saveSettings();
-    currentUser = null; entries = []; settings = {};
-    localStorage.removeItem(LS_CURRENT);
+  function showLogin(prefill) {
+    currentUser = null;
     $('appScreen').hidden = true;
     $('loginScreen').hidden = false;
-    $('loginName').value = ''; $('loginDept').value = '统战科';
+    // 自动带出上次名字/部门：首次或切换用户才需改，否则直接点“进入”
+    if (prefill && prefill.name) {
+      $('loginName').value = prefill.name;
+      if (prefill.dept) $('loginDept').value = prefill.dept;
+    }
     $('loginName').focus();
+  }
+  function logout() {
+    saveEntries(); saveSettings();
+    const last = currentUser;
+    currentUser = null; entries = []; settings = {};
+    localStorage.removeItem(LS_CURRENT);
+    showLogin(last); // 保留名字，切换用户只需改一下即可
   }
   function doLogin() {
     const name = $('loginName').value.trim();
@@ -453,9 +462,9 @@
   // ---------- 启动 ----------
   try {
     const saved = JSON.parse(localStorage.getItem(LS_CURRENT) || 'null');
-    if (saved && saved.name) { enterApp(saved); }
-    else { $('loginScreen').hidden = false; $('appScreen').hidden = true; $('loginName').focus(); }
+    if (saved && saved.name) { enterApp(saved); }   // 已登录过：直接进，免输
+    else { showLogin(null); }                        // 首次：显示登录屏
   } catch (e) {
-    $('loginScreen').hidden = false; $('appScreen').hidden = true;
+    showLogin(null);
   }
 })();
