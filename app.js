@@ -60,7 +60,7 @@
     const s = String(v).trim();
     if (/^\d{1,2}:\d{2}/.test(s)) return s.slice(0, 5);
     const f = Number(v);
-    if (!isFinite(f) || f <= 0 || f >= 1) return '';
+    if (!isFinite(f) || f < 0 || f >= 1) return '';
     const totalMin = Math.round(f * 24 * 60);
     return pad(Math.floor(totalMin / 60)) + ':' + pad(totalMin % 60);
   }
