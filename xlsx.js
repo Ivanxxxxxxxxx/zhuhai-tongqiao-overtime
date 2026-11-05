@@ -24,18 +24,21 @@
   }
   function effInt(h) { return effHours(h); }
 
-  // "YYYY-MM-DD" -> Date（按本地0点）；"HH:MM" -> Date（1899-12-30 基准，Excel 时间小数）
+  // 转成 Excel 序列值（与时区/夏令时完全无关，避免 ExcelJS 写入本地 Date 导致的时区偏移）
+  // 日期：Excel 1900 日期系统基准 1899-12-30，用 UTC 计算天数差
   function toDateObj(s) {
     if (!s) return null;
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s));
     if (!m) return null;
-    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const y = Number(m[1]), mo = Number(m[2]) - 1, d = Number(m[3]);
+    return Math.round((Date.UTC(y, mo, d) - Date.UTC(1899, 11, 30)) / 86400000);
   }
+  // 时间：一天内的小数（时*60+分）/1440，h:mm 格式据此显示
   function toTimeObj(s) {
     if (!s) return null;
     const m = /^(\d{1,2}):(\d{2})/.exec(String(s));
     if (!m) return null;
-    return new Date(1899, 11, 30, Number(m[1]), Number(m[2]), 0);
+    return (Number(m[1]) * 60 + Number(m[2])) / 1440;
   }
 
   // ===== 行列工具 =====
@@ -127,12 +130,12 @@
         row.getCell(1).value = i + 1;
         row.getCell(2).value = e.dept || '';
         row.getCell(3).value = e.name;
-        const dc = row.getCell(4); const dObj = toDateObj(e.date); if (dObj) { dc.value = dObj; dc.numFmt = 'yyyy-mm-dd'; }
+        const dc = row.getCell(4); const dObj = toDateObj(e.date); if (dObj != null) { dc.value = dObj; dc.numFmt = 'yyyy-mm-dd'; }
         row.getCell(5).value = e.type === 'weekday' ? h : '';
         row.getCell(6).value = e.type === 'weekend' ? h : '';
         row.getCell(7).value = e.type === 'holiday' ? h : '';
-        const sc = row.getCell(8); const sObj = toTimeObj(e.start); if (sObj) { sc.value = sObj; sc.numFmt = 'h:mm'; }
-        const ec = row.getCell(9); const eObj = toTimeObj(e.end); if (eObj) { ec.value = eObj; ec.numFmt = 'h:mm'; }
+        const sc = row.getCell(8); const sObj = toTimeObj(e.start); if (sObj != null) { sc.value = sObj; sc.numFmt = 'h:mm'; }
+        const ec = row.getCell(9); const eObj = toTimeObj(e.end); if (eObj != null) { ec.value = eObj; ec.numFmt = 'h:mm'; }
         row.getCell(10).value = e.reason || '';
         if (e.type === 'weekday') wkSum += h; else if (e.type === 'weekend') weSum += h; else hoSum += h;
       } else {
